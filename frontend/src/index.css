@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-bg text-ink font-body antialiased;
+}
+
+h1, h2, h3, h4 {
+  @apply font-display;
+}
+
+::selection {
+  background: rgba(95, 168, 119, 0.35);
+  color: #fff;
+}
+
+/* Slim, quiet scrollbars that match the instrument-panel feel */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #263731;
+  border-radius: 999px;
+  border: 2px solid #0c1310;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #33473e;
+}
+
+/* Visible keyboard focus everywhere, styled to the palette */
+:focus-visible {
+  outline: 2px solid #5FA877;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #151F1A !important;
+}
+
+/* Faint fixed grid — a nod to sensor/field survey grids, used once on the hero only */
+.field-grid {
+  background-image:
+    linear-gradient(rgba(234, 240, 234, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(234, 240, 234, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
