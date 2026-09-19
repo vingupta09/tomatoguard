@@ -56,7 +56,10 @@ def status():
         {
             "esp32_online": store.is_role_online("camera"),
             "pump_online": store.is_role_online("pump"),
-            "last_dispensed": humanize(store.get_last_dispensed()),
+            # kept for backward compatibility — mirrors pump 1 (the auto/pesticide pump)
+            "last_dispensed": humanize(store.get_last_dispensed(1)),
+            "pump1_last_dispensed": humanize(store.get_last_dispensed(1)),
+            "pump2_last_dispensed": humanize(store.get_last_dispensed(2)),
             "detections_today": store.get_today_count(),
         }
     )
@@ -99,9 +102,14 @@ def api_predict():
 @app.post("/api/dispense")
 def api_dispense():
     """Manual trigger from the dashboard — queues the same command the
-    pump ESP32 picks up on its next poll."""
-    store.queue_dispense()
-    return jsonify({"queued": True})
+    pump ESP32 picks up on its next poll. Defaults to pump 1 (the
+    pesticide pump) if no pump is specified, for backward compatibility."""
+    data = request.get_json(silent=True) or {}
+    pump = data.get("pump", 1)
+    if pump not in (1, 2):
+        return jsonify({"error": "pump must be 1 or 2"}), 400
+    store.queue_dispense(pump)
+    return jsonify({"queued": True, "pump": pump})
 
 
 @app.get("/api/pump/command")
@@ -109,15 +117,19 @@ def pump_command():
     if not device_authorized(request):
         return jsonify({"error": "unauthorized"}), 401
     store.device_heartbeat(request.headers.get("X-Device-Id", "esp32-pump"), "pump")
-    command = store.get_and_clear_command()
-    return jsonify({"command": command or "none"})
+    commands = store.get_and_clear_commands()
+    return jsonify({"pump1": commands[1] or "none", "pump2": commands[2] or "none"})
 
 
 @app.post("/api/pump/ack")
 def pump_ack():
     if not device_authorized(request):
         return jsonify({"error": "unauthorized"}), 401
-    store.ack_dispense()
+    data = request.get_json(silent=True) or {}
+    pump = data.get("pump", 1)
+    if pump not in (1, 2):
+        return jsonify({"error": "pump must be 1 or 2"}), 400
+    store.ack_dispense(pump)
     return jsonify({"ok": True})
 
 

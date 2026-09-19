@@ -72,7 +72,10 @@ export function getDemoPrediction() {
 
 export const DEMO_STATUS = {
   esp32_online: true,
+  pump_online: true,
   last_dispensed: '2 hours ago',
+  pump1_last_dispensed: '2 hours ago',
+  pump2_last_dispensed: '1 day ago',
   detections_today: 14,
   demo: true,
 }

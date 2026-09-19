@@ -1,7 +1,7 @@
 """
 Small SQLite store — detection history, device online-status, and the
-one-row pump command queue. Good enough for a single-worker Flask/gunicorn
-deployment; not built for concurrent writers.
+one-row, two-pump command queue. Good enough for a single-worker
+Flask/gunicorn deployment; not built for concurrent writers.
 """
 import datetime
 import os
@@ -40,12 +40,25 @@ def init_db():
         conn.execute(
             """CREATE TABLE IF NOT EXISTS pump_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                pending_command TEXT,
-                last_dispensed TEXT
+                pending_command_1 TEXT,
+                pending_command_2 TEXT,
+                last_dispensed_1 TEXT,
+                last_dispensed_2 TEXT
             )"""
         )
+        # Migrate a pre-existing single-pump database (older column names).
+        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(pump_state)")}
+        if "pending_command" in existing_cols and "pending_command_1" not in existing_cols:
+            conn.execute("ALTER TABLE pump_state ADD COLUMN pending_command_1 TEXT")
+            conn.execute("ALTER TABLE pump_state ADD COLUMN pending_command_2 TEXT")
+            conn.execute("ALTER TABLE pump_state ADD COLUMN last_dispensed_1 TEXT")
+            conn.execute("ALTER TABLE pump_state ADD COLUMN last_dispensed_2 TEXT")
+            conn.execute(
+                "UPDATE pump_state SET pending_command_1 = pending_command, last_dispensed_1 = last_dispensed WHERE id = 1"
+            )
         conn.execute(
-            "INSERT OR IGNORE INTO pump_state (id, pending_command, last_dispensed) VALUES (1, NULL, NULL)"
+            """INSERT OR IGNORE INTO pump_state (id, pending_command_1, pending_command_2, last_dispensed_1, last_dispensed_2)
+               VALUES (1, NULL, NULL, NULL, NULL)"""
         )
 
 
@@ -108,24 +121,41 @@ def is_role_online(role: str, within_seconds: int = 30) -> bool:
     return False
 
 
-def queue_dispense():
+def _pump_column(prefix: str, pump: int) -> str:
+    if pump not in (1, 2):
+        raise ValueError(f"pump must be 1 or 2, got {pump!r}")
+    return f"{prefix}_{pump}"
+
+
+def queue_dispense(pump: int = 1):
+    col = _pump_column("pending_command", pump)
     with _lock, _conn() as conn:
-        conn.execute("UPDATE pump_state SET pending_command = 'dispense' WHERE id = 1")
+        conn.execute(f"UPDATE pump_state SET {col} = 'dispense' WHERE id = 1")
 
 
-def get_and_clear_command():
+def get_and_clear_commands():
+    """Returns {1: command_or_None, 2: command_or_None} and clears both."""
     with _lock, _conn() as conn:
-        row = conn.execute("SELECT pending_command FROM pump_state WHERE id = 1").fetchone()
-        conn.execute("UPDATE pump_state SET pending_command = NULL WHERE id = 1")
-    return row["pending_command"] if row else None
+        row = conn.execute(
+            "SELECT pending_command_1, pending_command_2 FROM pump_state WHERE id = 1"
+        ).fetchone()
+        conn.execute(
+            "UPDATE pump_state SET pending_command_1 = NULL, pending_command_2 = NULL WHERE id = 1"
+        )
+    return {
+        1: row["pending_command_1"] if row else None,
+        2: row["pending_command_2"] if row else None,
+    }
 
 
-def ack_dispense():
+def ack_dispense(pump: int = 1):
+    col = _pump_column("last_dispensed", pump)
     with _lock, _conn() as conn:
-        conn.execute("UPDATE pump_state SET last_dispensed = ? WHERE id = 1", (_now(),))
+        conn.execute(f"UPDATE pump_state SET {col} = ? WHERE id = 1", (_now(),))
 
 
-def get_last_dispensed():
+def get_last_dispensed(pump: int = 1):
+    col = _pump_column("last_dispensed", pump)
     with _lock, _conn() as conn:
-        row = conn.execute("SELECT last_dispensed FROM pump_state WHERE id = 1").fetchone()
-    return row["last_dispensed"] if row else None
+        row = conn.execute(f"SELECT {col} FROM pump_state WHERE id = 1").fetchone()
+    return row[col] if row else None

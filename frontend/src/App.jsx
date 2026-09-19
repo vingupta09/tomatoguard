@@ -5,6 +5,7 @@ import About from './pages/About.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import History from './pages/History.jsx'
 import LocationPage from './pages/LocationPage.jsx'
+import PumpTest from './pages/PumpTest.jsx'
 import Navbar from './components/Navbar.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 
@@ -44,6 +45,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <AppLayout><LocationPage /></AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pump-test"
+        element={
+          <ProtectedRoute>
+            <AppLayout><PumpTest /></AppLayout>
           </ProtectedRoute>
         }
       />
