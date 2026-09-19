@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import client from '../api/client.js'
+import client, { mediaUrl } from '../api/client.js'
 import StatusCard from '../components/StatusCard.jsx'
 import DiagnosisPanel from '../components/DiagnosisPanel.jsx'
-import { getDemoPrediction, DEMO_STATUS } from '../data/demo.js'
+import { getDemoPrediction, DEMO_STATUS, DEMO_HISTORY } from '../data/demo.js'
+
+const CLASS_DOT = { healthy: 'bg-moss', non_fungal: 'bg-amber', fungal: 'bg-crimson' }
 
 export default function Dashboard() {
   const [file, setFile] = useState(null)
@@ -12,12 +14,21 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [dispensed, setDispensed] = useState(false)
+  const [latestCapture, setLatestCapture] = useState(null)
+
+  const loadLatestCapture = () => {
+    client
+      .get('/api/history', { params: { limit: 1 } })
+      .then(({ data }) => setLatestCapture(data[0] || null))
+      .catch(() => setLatestCapture(DEMO_HISTORY[0]))
+  }
 
   useEffect(() => {
     client
       .get('/api/status')
       .then(({ data }) => setStatus(data))
       .catch(() => setStatus(DEMO_STATUS))
+    loadLatestCapture()
   }, [])
 
   const handleFile = (e) => {
@@ -40,6 +51,7 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setResult(data)
+      loadLatestCapture()
     } catch (err) {
       setResult(getDemoPrediction())
       setError('Backend unreachable — showing a demo result instead.')
@@ -131,6 +143,37 @@ export default function Dashboard() {
             <p className="text-xs text-moss-bright font-mono mt-4">✓ Dispensing command sent</p>
           )}
         </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel mt-6">
+        <h3 className="text-xs uppercase tracking-wide text-ink-faint mb-4">Latest camera capture</h3>
+        {!latestCapture && <p className="text-sm text-ink-faint">No captures logged yet.</p>}
+        {latestCapture && (
+          <div className="flex gap-5 items-center">
+            <div className="w-32 h-32 rounded-xl overflow-hidden bg-bg-soft border border-border shrink-0">
+              {latestCapture.image_url ? (
+                <img
+                  src={mediaUrl(latestCapture.image_url)}
+                  alt="Latest field capture"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs text-ink-faint text-center px-2">
+                  No image saved
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-mono text-ink-faint mb-1">{latestCapture.timestamp}</p>
+              <p className="capitalize font-medium flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${CLASS_DOT[latestCapture.class] || 'bg-ink/30'}`} />
+                {latestCapture.class.replace('_', '-')}
+              </p>
+              <p className="text-xs text-ink-dim mt-1 capitalize">Severity: {latestCapture.severity}</p>
+              <p className="text-xs text-ink-dim mt-1">{latestCapture.dispensed ? 'Pump dispensed' : 'Not dispensed'}</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

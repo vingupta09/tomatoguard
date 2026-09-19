@@ -27,9 +27,13 @@ def init_db():
                 class TEXT NOT NULL,
                 confidence REAL NOT NULL,
                 severity TEXT NOT NULL,
-                dispensed INTEGER NOT NULL DEFAULT 0
+                dispensed INTEGER NOT NULL DEFAULT 0,
+                image_filename TEXT
             )"""
         )
+        detection_cols = {row["name"] for row in conn.execute("PRAGMA table_info(detections)")}
+        if "image_filename" not in detection_cols:
+            conn.execute("ALTER TABLE detections ADD COLUMN image_filename TEXT")
         conn.execute(
             """CREATE TABLE IF NOT EXISTS devices (
                 device_id TEXT PRIMARY KEY,
@@ -66,18 +70,25 @@ def _now():
     return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
 
-def log_detection(class_name: str, confidence: float, severity: str, dispensed: bool = False):
+def log_detection(
+    class_name: str,
+    confidence: float,
+    severity: str,
+    dispensed: bool = False,
+    image_filename: str | None = None,
+):
     with _lock, _conn() as conn:
         conn.execute(
-            "INSERT INTO detections (timestamp, class, confidence, severity, dispensed) VALUES (?, ?, ?, ?, ?)",
-            (_now(), class_name, confidence, severity, int(dispensed)),
+            """INSERT INTO detections (timestamp, class, confidence, severity, dispensed, image_filename)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (_now(), class_name, confidence, severity, int(dispensed), image_filename),
         )
 
 
 def get_history(limit: int = 100):
     with _lock, _conn() as conn:
         rows = conn.execute(
-            "SELECT timestamp, class, confidence, severity, dispensed FROM detections ORDER BY id DESC LIMIT ?",
+            "SELECT timestamp, class, confidence, severity, dispensed, image_filename FROM detections ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()
     return [
@@ -87,6 +98,7 @@ def get_history(limit: int = 100):
             "confidence": r["confidence"],
             "severity": r["severity"],
             "dispensed": bool(r["dispensed"]),
+            "image_filename": r["image_filename"],
         }
         for r in rows
     ]
