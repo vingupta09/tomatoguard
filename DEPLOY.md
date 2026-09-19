@@ -117,10 +117,12 @@ leaf photo — it now hits your real model instead of the demo fallback.
 - Free web services spin down after ~15 minutes idle. The **first** request
   after that (e.g. the ESP32-CAM's next capture, or you opening the
   dashboard) takes 30-60s to wake up — normal, not a bug.
-- `store.py` uses a SQLite file on local disk. Render's free tier has an
-  **ephemeral** filesystem — history resets on every redeploy/restart. Fine
-  for a demo/project; if you need it to persist, add a Render persistent
-  disk (paid) or point `store.py` at an external DB later.
+- `store.py` uses a SQLite file on local disk, and captured leaf photos are
+  saved to `backend/uploads/`. Render's free tier has an **ephemeral**
+  filesystem — history and saved images both reset on every
+  redeploy/restart. Fine for a demo/project; if you need them to persist,
+  add a Render persistent disk (paid), or point `store.py` at an external
+  DB and `uploads/` at object storage (e.g. S3) later.
 - The backend runs with one gunicorn worker so the in-process pump-command
   queue and SQLite writes stay simple/consistent. That's plenty for a
   single-camera, single-pump setup.

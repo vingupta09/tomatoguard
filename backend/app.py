@@ -1,7 +1,8 @@
 import datetime
 import os
+import uuid
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 import store
@@ -21,7 +22,24 @@ DEVICE_API_KEY = os.environ.get("DEVICE_API_KEY", "")
 # (not a manual browser test) reports them
 AUTO_DISPENSE_SEVERITIES = {"medium", "high"}
 
+# Every analyzed leaf photo (camera or manual dashboard upload) is saved here
+# so the dashboard/history can show it later. Same caveat as data.db: on
+# Render's free tier this is ephemeral and resets on redeploy/restart.
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 store.init_db()
+
+
+def save_image(image_bytes: bytes) -> str:
+    filename = f"{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}.jpg"
+    with open(os.path.join(UPLOAD_DIR, filename), "wb") as f:
+        f.write(image_bytes)
+    return filename
+
+
+def image_url(filename):
+    return f"/api/uploads/{filename}" if filename else None
 
 
 def device_authorized(req) -> bool:
@@ -68,7 +86,15 @@ def status():
 @app.get("/api/history")
 def history():
     limit = request.args.get("limit", default=100, type=int)
-    return jsonify(store.get_history(limit))
+    records = store.get_history(limit)
+    for r in records:
+        r["image_url"] = image_url(r.pop("image_filename"))
+    return jsonify(records)
+
+
+@app.get("/api/uploads/<path:filename>")
+def uploaded_image(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
 
 
 @app.post("/api/predict")
@@ -83,6 +109,7 @@ def api_predict():
         return jsonify({"error": f"Could not read image: {exc}"}), 400
 
     result = build_result(class_name, confidence)
+    saved_filename = save_image(image_bytes)
 
     # Only an authenticated camera device gets to auto-queue the pump —
     # a manual browser upload from the dashboard never triggers hardware.
@@ -91,11 +118,18 @@ def api_predict():
     if auto_dispense:
         store.queue_dispense()
 
-    store.log_detection(result["class"], result["confidence"], result["severity"], dispensed=auto_dispense)
+    store.log_detection(
+        result["class"],
+        result["confidence"],
+        result["severity"],
+        dispensed=auto_dispense,
+        image_filename=saved_filename,
+    )
     if is_camera:
         store.device_heartbeat(request.headers.get("X-Device-Id", "esp32-cam"), "camera")
 
     result["auto_dispense_queued"] = auto_dispense
+    result["image_url"] = image_url(saved_filename)
     return jsonify(result)
 
 

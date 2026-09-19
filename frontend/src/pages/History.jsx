@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import client from '../api/client.js'
+import client, { mediaUrl } from '../api/client.js'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Cell } from 'recharts'
 import { DEMO_HISTORY } from '../data/demo.js'
 
@@ -66,6 +66,7 @@ export default function History() {
         <table className="w-full text-sm">
           <thead className="bg-surface-raised text-ink-faint">
             <tr>
+              <th className="text-left px-5 py-3 font-normal text-xs uppercase tracking-wide">Image</th>
               <th className="text-left px-5 py-3 font-normal text-xs uppercase tracking-wide">Time</th>
               <th className="text-left px-5 py-3 font-normal text-xs uppercase tracking-wide">Class</th>
               <th className="text-left px-5 py-3 font-normal text-xs uppercase tracking-wide">Confidence</th>
@@ -76,13 +77,24 @@ export default function History() {
           <tbody>
             {records.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-8 text-center text-ink-faint">
+                <td colSpan={6} className="px-5 py-8 text-center text-ink-faint">
                   No detections logged yet.
                 </td>
               </tr>
             )}
             {records.map((r, i) => (
               <tr key={i} className="border-t border-border-soft hover:bg-surface-raised/50 transition-colors">
+                <td className="px-5 py-3">
+                  {r.image_url ? (
+                    <img
+                      src={mediaUrl(r.image_url)}
+                      alt={`${r.class} leaf capture`}
+                      className="w-12 h-12 rounded-lg object-cover border border-border"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-bg-soft border border-border" />
+                  )}
+                </td>
                 <td className="px-5 py-3 font-mono text-xs text-ink-dim">{r.timestamp}</td>
                 <td className="px-5 py-3 capitalize">
                   <span className="inline-flex items-center gap-2">
