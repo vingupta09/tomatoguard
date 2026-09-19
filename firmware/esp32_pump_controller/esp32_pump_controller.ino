@@ -1,17 +1,20 @@
 /*
   ESP32 pump controller
   Board: any plain ESP32 dev board (does not need a camera).
+  Drives two independently-controlled pumps/sprayers (e.g. pesticide + water).
 
   What this does, on a loop:
-    1. GETs {SERVER_URL}/api/pump/command every POLL_INTERVAL_MS.
-    2. If the server says "dispense", drives the relay pin HIGH for
-       DISPENSE_DURATION_MS (running the pump/sprayer), then LOW.
-    3. POSTs {SERVER_URL}/api/pump/ack so the dashboard's "Last dispensed"
-       status updates.
+    1. GETs {SERVER_URL}/api/pump/command every POLL_INTERVAL_MS, which
+       returns the pending command for each pump: {"pump1": "dispense"|"none",
+       "pump2": "dispense"|"none"}.
+    2. For each pump with a pending "dispense", drives that pump's relay pin
+       HIGH for DISPENSE_DURATION_MS, then LOW.
+    3. POSTs {SERVER_URL}/api/pump/ack with {"pump": 1|2} after each one, so
+       the dashboard's "Last dispensed" status updates.
 
-  Wiring: relay module IN pin -> RELAY_PIN, relay VCC/GND -> 5V/GND,
-  pump/solenoid wired through the relay's NO (normally open) contact so it
-  only runs while RELAY_PIN is driven HIGH. Use a relay module rated for
+  Wiring: relay module IN pin -> RELAY_PIN_1 / RELAY_PIN_2, relay VCC/GND ->
+  5V/GND, pump/solenoid wired through the relay's NO (normally open) contact
+  so it only runs while its pin is driven HIGH. Use a relay module rated for
   your pump's voltage/current — do not drive a pump directly from a GPIO pin.
 
   Libraries needed (Arduino IDE > Library Manager):
@@ -33,9 +36,11 @@ const char* SERVER_URL     = "https://YOUR-BACKEND.onrender.com";
 const char* DEVICE_KEY     = "change-me-to-a-long-random-string";
 const char* DEVICE_ID      = "esp32-pump-north-row";
 
-const int RELAY_PIN                    = 26;
+// Adjust these two to whatever GPIOs your relay modules are actually wired to.
+const int RELAY_PIN_1                  = 26; // pump 1, e.g. pesticide sprayer
+const int RELAY_PIN_2                  = 27; // pump 2, e.g. water pump
 const unsigned long POLL_INTERVAL_MS   = 5000;   // check for commands every 5s
-const unsigned long DISPENSE_DURATION_MS = 4000; // how long the pump runs per dose
+const unsigned long DISPENSE_DURATION_MS = 4000; // how long a pump runs per dose
 
 unsigned long lastPoll = 0;
 
@@ -52,18 +57,18 @@ void connectWiFi() {
   Serial.println(WiFi.localIP());
 }
 
-void dispense() {
-  Serial.println("Dispensing...");
-  digitalWrite(RELAY_PIN, HIGH);
+void dispense(int pumpNum, int relayPin) {
+  Serial.printf("Dispensing pump %d...\n", pumpNum);
+  digitalWrite(relayPin, HIGH);
   delay(DISPENSE_DURATION_MS);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(relayPin, LOW);
   Serial.println("Done. Sending ack.");
 
   HTTPClient http;
   http.begin(String(SERVER_URL) + "/api/pump/ack");
   http.addHeader("X-Device-Key", DEVICE_KEY);
   http.addHeader("Content-Type", "application/json");
-  int status = http.POST("{}");
+  int status = http.POST(String("{\"pump\":") + pumpNum + "}");
   Serial.printf("ack responded %d\n", status);
   http.end();
 }
@@ -80,9 +85,13 @@ void pollForCommand() {
     String response = http.getString();
     StaticJsonDocument<256> doc;
     if (deserializeJson(doc, response) == DeserializationError::Ok) {
-      const char* command = doc["command"] | "none";
-      if (strcmp(command, "dispense") == 0) {
-        dispense();
+      const char* pump1 = doc["pump1"] | "none";
+      const char* pump2 = doc["pump2"] | "none";
+      if (strcmp(pump1, "dispense") == 0) {
+        dispense(1, RELAY_PIN_1);
+      }
+      if (strcmp(pump2, "dispense") == 0) {
+        dispense(2, RELAY_PIN_2);
       }
     }
   } else {
@@ -93,8 +102,10 @@ void pollForCommand() {
 
 void setup() {
   Serial.begin(115200);
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  pinMode(RELAY_PIN_1, OUTPUT);
+  pinMode(RELAY_PIN_2, OUTPUT);
+  digitalWrite(RELAY_PIN_1, LOW);
+  digitalWrite(RELAY_PIN_2, LOW);
   connectWiFi();
 }
 

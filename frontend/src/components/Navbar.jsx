@@ -35,6 +35,15 @@ const links = [
       </svg>
     ),
   },
+  {
+    to: '/pump-test',
+    label: 'Pump test',
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M12 2.5c3 3.5 6 7.3 6 10.8a6 6 0 1 1-12 0c0-3.5 3-7.3 6-10.8Z" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
 ]
 
 export default function Navbar() {
