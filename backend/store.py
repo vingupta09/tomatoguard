@@ -28,12 +28,15 @@ def init_db():
                 confidence REAL NOT NULL,
                 severity TEXT NOT NULL,
                 dispensed INTEGER NOT NULL DEFAULT 0,
-                image_filename TEXT
+                image_filename TEXT,
+                is_camera INTEGER NOT NULL DEFAULT 0
             )"""
         )
         detection_cols = {row["name"] for row in conn.execute("PRAGMA table_info(detections)")}
         if "image_filename" not in detection_cols:
             conn.execute("ALTER TABLE detections ADD COLUMN image_filename TEXT")
+        if "is_camera" not in detection_cols:
+            conn.execute("ALTER TABLE detections ADD COLUMN is_camera INTEGER NOT NULL DEFAULT 0")
         conn.execute(
             """CREATE TABLE IF NOT EXISTS devices (
                 device_id TEXT PRIMARY KEY,
@@ -76,12 +79,13 @@ def log_detection(
     severity: str,
     dispensed: bool = False,
     image_filename: str | None = None,
+    is_camera: bool = False,
 ):
     with _lock, _conn() as conn:
         conn.execute(
-            """INSERT INTO detections (timestamp, class, confidence, severity, dispensed, image_filename)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (_now(), class_name, confidence, severity, int(dispensed), image_filename),
+            """INSERT INTO detections (timestamp, class, confidence, severity, dispensed, image_filename, is_camera)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (_now(), class_name, confidence, severity, int(dispensed), image_filename, int(is_camera)),
         )
 
 
@@ -102,6 +106,24 @@ def get_history(limit: int = 100):
         }
         for r in rows
     ]
+
+
+def get_latest_camera_capture():
+    with _lock, _conn() as conn:
+        row = conn.execute(
+            """SELECT timestamp, class, confidence, severity, dispensed, image_filename
+               FROM detections WHERE is_camera = 1 ORDER BY id DESC LIMIT 1"""
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "timestamp": row["timestamp"],
+        "class": row["class"],
+        "confidence": row["confidence"],
+        "severity": row["severity"],
+        "dispensed": bool(row["dispensed"]),
+        "image_filename": row["image_filename"],
+    }
 
 
 def get_today_count():

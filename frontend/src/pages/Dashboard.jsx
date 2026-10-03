@@ -15,6 +15,8 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [dispensed, setDispensed] = useState(false)
   const [latestCapture, setLatestCapture] = useState(null)
+  const [cameraPreview, setCameraPreview] = useState(null)
+  const [cameraPreviewError, setCameraPreviewError] = useState(false)
 
   const loadLatestCapture = () => {
     client
@@ -24,11 +26,34 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    client
-      .get('/api/status')
-      .then(({ data }) => setStatus(data))
-      .catch(() => setStatus(DEMO_STATUS))
+    const refreshStatus = () => {
+      client
+        .get('/api/status')
+        .then(({ data }) => setStatus(data))
+        .catch(() => setStatus({ ...DEMO_STATUS, esp32_online: false }))
+    }
+    const refreshCameraPreview = () => {
+      client
+        .get('/api/camera/preview')
+        .then(({ data }) => {
+          setCameraPreview(data)
+          setCameraPreviewError(false)
+        })
+        .catch(() => {
+          setCameraPreview(null)
+          setCameraPreviewError(true)
+        })
+    }
+
+    refreshStatus()
+    refreshCameraPreview()
     loadLatestCapture()
+    const refreshInterval = window.setInterval(() => {
+      refreshStatus()
+      refreshCameraPreview()
+    }, 5000)
+
+    return () => window.clearInterval(refreshInterval)
   }, [])
 
   const handleFile = (e) => {
@@ -95,6 +120,39 @@ export default function Dashboard() {
           hint="Across all rows"
         />
       </div>
+
+      <section className="bg-surface border border-border rounded-2xl p-6 shadow-panel mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-display font-semibold">Live camera preview</h3>
+            <p className="text-xs text-ink-faint mt-1">Refreshes with each camera capture, about every 20 seconds.</p>
+          </div>
+          <span className={`inline-flex items-center gap-2 text-xs ${status.esp32_online ? 'text-moss-bright' : 'text-ink-faint'}`}>
+            <span className={`h-2 w-2 rounded-full ${status.esp32_online ? 'bg-moss' : 'bg-ink-faint'}`} />
+            {status.esp32_online ? 'Camera connected' : 'Camera offline'}
+          </span>
+        </div>
+        <div className="aspect-video max-h-[28rem] rounded-xl overflow-hidden bg-bg-soft border border-border flex items-center justify-center">
+          {status.esp32_online && cameraPreview?.image_url ? (
+            <img
+              src={mediaUrl(cameraPreview.image_url)}
+              alt="Latest live camera frame"
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <p className="text-sm text-ink-faint text-center px-6">
+              {status.esp32_online
+                ? cameraPreviewError
+                  ? 'Unable to load the camera preview. Please try again shortly.'
+                  : 'Waiting for the camera to send its first frame…'
+                : 'Connect the ESP32-CAM to see its preview here.'}
+            </p>
+          )}
+        </div>
+        {status.esp32_online && cameraPreview?.timestamp && (
+          <p className="text-xs font-mono text-ink-faint mt-3">Last frame: {cameraPreview.timestamp}</p>
+        )}
+      </section>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel h-fit">

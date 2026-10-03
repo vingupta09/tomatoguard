@@ -92,6 +92,15 @@ def history():
     return jsonify(records)
 
 
+@app.get("/api/camera/preview")
+def camera_preview():
+    capture = store.get_latest_camera_capture()
+    if capture is None:
+        return jsonify(None)
+    capture["image_url"] = image_url(capture.pop("image_filename"))
+    return jsonify(capture)
+
+
 @app.get("/api/uploads/<path:filename>")
 def uploaded_image(filename):
     return send_from_directory(UPLOAD_DIR, filename)
@@ -124,6 +133,7 @@ def api_predict():
         result["severity"],
         dispensed=auto_dispense,
         image_filename=saved_filename,
+        is_camera=is_camera,
     )
     if is_camera:
         store.device_heartbeat(request.headers.get("X-Device-Id", "esp32-cam"), "camera")
