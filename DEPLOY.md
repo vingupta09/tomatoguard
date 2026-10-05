@@ -43,13 +43,29 @@ keep that behavior, or update `inference.py` if you change it.
 
 ## 2. Run the backend locally first
 
+The backend is a Python project; do not run `npm install` in `backend/`.
+Install its dependencies with `pip`.
+
+On macOS/Linux:
 ```bash
 cd backend
 python3 -m venv venv
-source venv/bin/activate        # venv\Scripts\activate on Windows
-pip install -r requirements.txt
+source venv/bin/activate
+python -m pip install -r requirements.txt
 python app.py
 ```
+
+On Windows using Git Bash:
+```bash
+cd backend
+py -3.11 -m venv venv
+source venv/Scripts/activate
+python -m pip install -r requirements.txt
+python app.py
+```
+
+In Windows PowerShell, use `.\venv\Scripts\Activate.ps1` instead of the
+Git Bash activation command.
 
 It starts on `http://localhost:5000`. Quick check:
 

@@ -18,7 +18,7 @@ export default function PumpTest() {
     client
       .get('/api/status')
       .then(({ data }) => setStatus(data))
-      .catch(() => setStatus(DEMO_STATUS))
+      .catch(() => setStatus({ ...DEMO_STATUS, pump_online: false }))
   }
 
   useEffect(loadStatus, [])

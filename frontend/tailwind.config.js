@@ -4,17 +4,46 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Base surfaces — deep pine-black, not pure neutral black
-        bg: { DEFAULT: '#0C1310', soft: '#0F1713' },
-        surface: { DEFAULT: '#151F1A', raised: '#1B2620', hover: '#213026' },
-        border: { DEFAULT: '#263731', soft: '#1C2A24' },
-        // Text
-        ink: { DEFAULT: '#EAF0EA', dim: '#9DAEA3', faint: '#6C7C72' },
+        bg: {
+          DEFAULT: 'rgb(var(--color-bg) / <alpha-value>)',
+          soft: 'rgb(var(--color-bg-soft) / <alpha-value>)',
+        },
+        surface: {
+          DEFAULT: 'rgb(var(--color-surface) / <alpha-value>)',
+          raised: 'rgb(var(--color-surface-raised) / <alpha-value>)',
+          hover: 'rgb(var(--color-surface-hover) / <alpha-value>)',
+        },
+        border: {
+          DEFAULT: 'rgb(var(--color-border) / <alpha-value>)',
+          soft: 'rgb(var(--color-border-soft) / <alpha-value>)',
+        },
+        ink: {
+          DEFAULT: 'rgb(var(--color-ink) / <alpha-value>)',
+          dim: 'rgb(var(--color-ink-dim) / <alpha-value>)',
+          faint: 'rgb(var(--color-ink-faint) / <alpha-value>)',
+        },
         // Brand / status accents — grounded in plant + soil, not generic SaaS purple
-        moss: { DEFAULT: '#5FA877', bright: '#7FC496', dim: '#3C6E4E', 50: '#EAF5EE' },
-        rust: { DEFAULT: '#C15A34', bright: '#DB7A52', dim: '#7A3A21' },
-        amber: { DEFAULT: '#CC9640', bright: '#E3B466', dim: '#7A5A26' },
-        crimson: { DEFAULT: '#B3423A', bright: '#D25F56', dim: '#6E2A25' },
+        moss: {
+          DEFAULT: 'rgb(var(--color-moss) / <alpha-value>)',
+          bright: 'rgb(var(--color-moss-bright) / <alpha-value>)',
+          dim: 'rgb(var(--color-moss-dim) / <alpha-value>)',
+          50: '#EAF5EE',
+        },
+        rust: {
+          DEFAULT: 'rgb(var(--color-rust) / <alpha-value>)',
+          bright: 'rgb(var(--color-rust-bright) / <alpha-value>)',
+          dim: 'rgb(var(--color-rust-dim) / <alpha-value>)',
+        },
+        amber: {
+          DEFAULT: 'rgb(var(--color-amber) / <alpha-value>)',
+          bright: 'rgb(var(--color-amber-bright) / <alpha-value>)',
+          dim: 'rgb(var(--color-amber-dim) / <alpha-value>)',
+        },
+        crimson: {
+          DEFAULT: 'rgb(var(--color-crimson) / <alpha-value>)',
+          bright: 'rgb(var(--color-crimson-bright) / <alpha-value>)',
+          dim: 'rgb(var(--color-crimson-dim) / <alpha-value>)',
+        },
       },
       fontFamily: {
         display: ['"Fraunces"', 'ui-serif', 'Georgia', 'serif'],

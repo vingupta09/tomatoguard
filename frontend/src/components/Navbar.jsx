@@ -1,5 +1,6 @@
 import { NavLink, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import ThemeToggle from './ThemeToggle.jsx'
 
 const links = [
   {
@@ -22,16 +23,6 @@ const links = [
         <path d="M3 12a9 9 0 1 0 3-6.7" strokeLinecap="round" />
         <path d="M3 4v5h5" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M12 7v5l3.5 2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
-  {
-    to: '/location',
-    label: 'Field location',
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M12 21s7-6.3 7-11.5A7 7 0 0 0 5 9.5C5 14.7 12 21 12 21Z" strokeLinejoin="round" />
-        <circle cx="12" cy="9.5" r="2.4" />
       </svg>
     ),
   },
@@ -84,6 +75,7 @@ export default function Navbar() {
         ))}
       </nav>
       <div className="px-4 py-4 border-t border-border">
+        <ThemeToggle />
         <div className="flex items-center gap-3 rounded-lg bg-surface-raised px-3 py-2.5 mb-2">
           <span className="h-7 w-7 rounded-full bg-moss/20 text-moss-bright text-xs font-medium flex items-center justify-center shrink-0">
             {(user || '?').slice(0, 1).toUpperCase()}

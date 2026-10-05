@@ -2,8 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
+:root {
+  color-scheme: light;
+  --color-bg: 245 247 242;
+  --color-bg-soft: 237 242 235;
+  --color-surface: 255 255 255;
+  --color-surface-raised: 241 245 239;
+  --color-surface-hover: 231 238 229;
+  --color-border: 216 225 216;
+  --color-border-soft: 229 235 227;
+  --color-ink: 32 43 35;
+  --color-ink-dim: 83 101 88;
+  --color-ink-faint: 112 129 117;
+  --color-moss: 60 110 78;
+  --color-moss-bright: 60 110 78;
+  --color-moss-dim: 60 110 78;
+  --color-rust: 161 70 39;
+  --color-rust-bright: 161 70 39;
+  --color-rust-dim: 122 58 33;
+  --color-amber: 128 85 0;
+  --color-amber-bright: 128 85 0;
+  --color-amber-dim: 104 69 18;
+  --color-crimson: 159 51 45;
+  --color-crimson-bright: 159 51 45;
+  --color-crimson-dim: 110 42 37;
+  --scrollbar-thumb: #c4d0c5;
+  --scrollbar-thumb-hover: #aabaaa;
+  --scrollbar-border: #f5f7f2;
+  --selection-text: #202b23;
+  --grid-line: rgba(32, 43, 35, 0.05);
+}
+
+:root[data-theme='dark'] {
   color-scheme: dark;
+  --color-bg: 12 19 16;
+  --color-bg-soft: 15 23 19;
+  --color-surface: 21 31 26;
+  --color-surface-raised: 27 38 32;
+  --color-surface-hover: 33 48 38;
+  --color-border: 38 55 49;
+  --color-border-soft: 28 42 36;
+  --color-ink: 234 240 234;
+  --color-ink-dim: 157 174 163;
+  --color-ink-faint: 108 124 114;
+  --color-moss: 95 168 119;
+  --color-moss-bright: 127 196 150;
+  --color-moss-dim: 60 110 78;
+  --color-rust: 193 90 52;
+  --color-rust-bright: 219 122 82;
+  --color-rust-dim: 122 58 33;
+  --color-amber: 204 150 64;
+  --color-amber-bright: 227 180 102;
+  --color-amber-dim: 122 90 38;
+  --color-crimson: 179 66 58;
+  --color-crimson-bright: 210 95 86;
+  --color-crimson-dim: 110 42 37;
+  --scrollbar-thumb: #263731;
+  --scrollbar-thumb-hover: #33473e;
+  --scrollbar-border: #0c1310;
+  --selection-text: #fff;
+  --grid-line: rgba(234, 240, 234, 0.05);
 }
 
 body {
@@ -16,7 +74,7 @@ h1, h2, h3, h4 {
 
 ::selection {
   background: rgba(95, 168, 119, 0.35);
-  color: #fff;
+  color: var(--selection-text);
 }
 
 /* Slim, quiet scrollbars that match the instrument-panel feel */
@@ -28,12 +86,12 @@ h1, h2, h3, h4 {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #263731;
+  background: var(--scrollbar-thumb);
   border-radius: 999px;
-  border: 2px solid #0c1310;
+  border: 2px solid var(--scrollbar-border);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #33473e;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Visible keyboard focus everywhere, styled to the palette */
@@ -43,17 +101,10 @@ h1, h2, h3, h4 {
   border-radius: 4px;
 }
 
-.leaflet-container {
-  height: 100%;
-  width: 100%;
-  background: #151F1A !important;
-}
-
-/* Faint fixed grid — a nod to sensor/field survey grids, used once on the hero only */
 .field-grid {
   background-image:
-    linear-gradient(rgba(234, 240, 234, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(234, 240, 234, 0.05) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 

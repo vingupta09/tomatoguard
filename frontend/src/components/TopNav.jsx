@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import ThemeToggle from './ThemeToggle.jsx'
 
 export default function TopNav() {
   const { user } = useAuth()
@@ -26,12 +27,15 @@ export default function TopNav() {
             About
           </NavLink>
         </nav>
-        <Link
-          to={user ? '/dashboard' : '/login'}
-          className="text-sm font-medium bg-moss hover:bg-moss-bright text-bg rounded-lg px-4 py-2 transition-colors"
-        >
-          {user ? 'Open dashboard' : 'Sign in'}
-        </Link>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Link
+            to={user ? '/dashboard' : '/login'}
+            className="text-sm font-medium bg-moss hover:bg-moss-bright text-bg rounded-lg px-4 py-2 transition-colors"
+          >
+            {user ? 'Open dashboard' : 'Sign in'}
+          </Link>
+        </div>
       </div>
     </header>
   )

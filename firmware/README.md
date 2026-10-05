@@ -119,12 +119,10 @@ with headers identifying it as the camera device. If the backend classifies
 the leaf as medium/high severity, it automatically queues pump 1's
 dispense command — no button press needed.
 
-Between diagnoses it also pushes a raw JPEG to `{SERVER_URL}/api/camera/frame`
-about once a second (`PREVIEW_INTERVAL_MS`). The server keeps only the newest
-frame in memory (no inference, no history entry), and the dashboard's live
-camera preview polls it — roughly 1 fps, not full video. If no frame arrives
-for 15 seconds, the preview falls back to the last diagnosed capture. Set
-`PREVIEW_INTERVAL_MS = 0` to turn the live preview off.
+It also sends a lightweight heartbeat every 10 seconds so the dashboard can
+report its online status independently of image uploads or model-inference
+timing. Live-preview uploads are disabled because the dashboard no longer
+displays them.
 
 ### Wiring / hardware
 
@@ -147,6 +145,10 @@ const char* SERVER_URL     = "https://YOUR-BACKEND.onrender.com"; // no trailing
 const char* DEVICE_KEY     = "change-me-to-a-long-random-string";  // must match backend's DEVICE_API_KEY
 const char* DEVICE_ID      = "esp32-cam-north-row";
 ```
+
+Re-upload this sketch for the camera's online status to update. If the Serial
+Monitor reports a heartbeat failure, check the server URL and make sure
+`DEVICE_KEY` matches the backend's `DEVICE_API_KEY`.
 
 ### Flashing
 

@@ -144,7 +144,7 @@ def device_heartbeat(device_id: str, role: str):
         )
 
 
-def is_role_online(role: str, within_seconds: int = 30) -> bool:
+def is_role_online(role: str, within_seconds: int = 60) -> bool:
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(seconds=within_seconds)
     with _lock, _conn() as conn:
         rows = conn.execute("SELECT last_seen FROM devices WHERE role = ?", (role,)).fetchall()
