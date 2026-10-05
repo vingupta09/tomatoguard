@@ -8,6 +8,11 @@
        with field name "image", plus headers identifying this device as
        the camera so the server is allowed to auto-queue a pump command.
     3. Prints the JSON diagnosis to Serial for debugging.
+    4. Between diagnoses, pushes a raw JPEG frame to
+       POST {SERVER_URL}/api/camera/frame about once a second. The server
+       only keeps the newest frame (no inference, no history entry), and
+       the dashboard's "Live camera preview" polls it — so you get a
+       near-live view without hammering the classifier.
 
   Libraries needed (Arduino IDE > Library Manager):
     - ArduinoJson (by Benoit Blanchon)
@@ -40,6 +45,11 @@ const char* DEVICE_ID      = "esp32-cam-north-row";
 const unsigned long CAPTURE_INTERVAL_MS = 20000; // 20s — stay under the
                                                    // server's 30s "online" window
 
+// How often to push a live-preview frame to the dashboard. Each push is a
+// full HTTPS request, so ~1 fps is realistic on an ESP32. Set to 0 to
+// disable the live preview and only send diagnosis captures.
+const unsigned long PREVIEW_INTERVAL_MS = 1000;
+
 // ---------- AI-Thinker ESP32-CAM pin map ----------
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
@@ -59,6 +69,7 @@ const unsigned long CAPTURE_INTERVAL_MS = 20000; // 20s — stay under the
 #define PCLK_GPIO_NUM     22
 
 unsigned long lastCapture = 0;
+unsigned long lastPreview = 0;
 
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
@@ -102,6 +113,11 @@ bool initCamera() {
     config.frame_size = FRAMESIZE_SVGA;   // 800x600
     config.jpeg_quality = 10;             // lower number = higher quality
     config.fb_count = 2;
+    config.fb_location = CAMERA_FB_IN_PSRAM;
+    // Always hand back the newest frame. With the default
+    // (CAMERA_GRAB_WHEN_EMPTY) and 2 buffers, every fb_get would return a
+    // frame that's one interval old — the preview would lag behind.
+    config.grab_mode = CAMERA_GRAB_LATEST;
   } else {
     config.frame_size = FRAMESIZE_VGA;    // 640x480
     config.jpeg_quality = 12;
@@ -178,6 +194,37 @@ bool captureAndUpload() {
   return status >= 200 && status < 300;
 }
 
+// Pushes one JPEG frame as a raw image/jpeg body for the dashboard's live
+// preview. Fire-and-forget: failures are logged and the next tick retries.
+bool uploadPreviewFrame() {
+  camera_fb_t* fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("Preview capture failed");
+    return false;
+  }
+
+  HTTPClient http;
+  String url = String(SERVER_URL) + "/api/camera/frame";
+  http.begin(url);
+  http.setTimeout(5000);
+  http.addHeader("Content-Type", "image/jpeg");
+  http.addHeader("X-Device-Role", "camera");
+  http.addHeader("X-Device-Id", DEVICE_ID);
+  http.addHeader("X-Device-Key", DEVICE_KEY);
+
+  int status = http.POST(fb->buf, fb->len);
+  esp_camera_fb_return(fb);
+
+  if (status <= 0) {
+    Serial.printf("Preview POST failed: %s\n", http.errorToString(status).c_str());
+  } else if (status < 200 || status >= 300) {
+    Serial.printf("Preview rejected (%d): %s\n", status, http.getString().c_str());
+  }
+
+  http.end();
+  return status >= 200 && status < 300;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(200);
@@ -197,5 +244,11 @@ void loop() {
   if (millis() - lastCapture >= CAPTURE_INTERVAL_MS) {
     lastCapture = millis();
     captureAndUpload();
+    lastPreview = millis(); // the diagnosis upload also refreshes the preview
+  }
+
+  if (PREVIEW_INTERVAL_MS > 0 && millis() - lastPreview >= PREVIEW_INTERVAL_MS) {
+    lastPreview = millis();
+    uploadPreviewFrame();
   }
 }

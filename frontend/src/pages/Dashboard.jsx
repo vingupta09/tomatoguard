@@ -48,12 +48,14 @@ export default function Dashboard() {
     refreshStatus()
     refreshCameraPreview()
     loadLatestCapture()
-    const refreshInterval = window.setInterval(() => {
-      refreshStatus()
-      refreshCameraPreview()
-    }, 5000)
+    const statusInterval = window.setInterval(refreshStatus, 5000)
+    // The camera pushes a live frame about once a second — poll to match.
+    const previewInterval = window.setInterval(refreshCameraPreview, 1000)
 
-    return () => window.clearInterval(refreshInterval)
+    return () => {
+      window.clearInterval(statusInterval)
+      window.clearInterval(previewInterval)
+    }
   }, [])
 
   const handleFile = (e) => {
@@ -125,7 +127,11 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-display font-semibold">Live camera preview</h3>
-            <p className="text-xs text-ink-faint mt-1">Refreshes with each camera capture, about every 20 seconds.</p>
+            <p className="text-xs text-ink-faint mt-1">
+              {cameraPreview?.live
+                ? 'Streaming from the ESP32-CAM, about one frame per second.'
+                : 'Showing the latest diagnosed capture, about every 20 seconds.'}
+            </p>
           </div>
           <span className={`inline-flex items-center gap-2 text-xs ${status.esp32_online ? 'text-moss-bright' : 'text-ink-faint'}`}>
             <span className={`h-2 w-2 rounded-full ${status.esp32_online ? 'bg-moss' : 'bg-ink-faint'}`} />
@@ -150,7 +156,9 @@ export default function Dashboard() {
           )}
         </div>
         {status.esp32_online && cameraPreview?.timestamp && (
-          <p className="text-xs font-mono text-ink-faint mt-3">Last frame: {cameraPreview.timestamp}</p>
+          <p className="text-xs font-mono text-ink-faint mt-3">
+            {cameraPreview.live ? 'Live · ' : ''}Last frame: {cameraPreview.timestamp}
+          </p>
         )}
       </section>
 

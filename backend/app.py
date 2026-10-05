@@ -1,8 +1,9 @@
 import datetime
 import os
+import threading
 import uuid
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 import store
@@ -29,6 +30,35 @@ UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 store.init_db()
+
+# Newest live-preview frame from the camera, kept in memory only — it's
+# overwritten about once a second, so writing it to disk or the DB would be
+# pure churn. Fine for the single gunicorn worker in render.yaml; with more
+# workers each one would hold its own copy.
+LIVE_FRAME_MAX_AGE_S = 15
+MAX_LIVE_FRAME_BYTES = 2 * 1024 * 1024
+_live_frame_lock = threading.Lock()
+_live_frame = {"bytes": None, "timestamp": None, "received_at": None, "seq": 0}
+
+
+def set_live_frame(image_bytes: bytes):
+    with _live_frame_lock:
+        _live_frame["bytes"] = image_bytes
+        _live_frame["timestamp"] = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        _live_frame["received_at"] = datetime.datetime.utcnow()
+        _live_frame["seq"] += 1
+
+
+def get_live_frame():
+    """Returns a copy of the live frame, or None if absent or stale."""
+    with _live_frame_lock:
+        frame = dict(_live_frame)
+    if frame["bytes"] is None:
+        return None
+    age = (datetime.datetime.utcnow() - frame["received_at"]).total_seconds()
+    if age > LIVE_FRAME_MAX_AGE_S:
+        return None
+    return frame
 
 
 def save_image(image_bytes: bytes) -> str:
@@ -94,11 +124,58 @@ def history():
 
 @app.get("/api/camera/preview")
 def camera_preview():
+    frame = get_live_frame()
+    if frame is not None:
+        return jsonify(
+            {
+                "live": True,
+                "timestamp": frame["timestamp"],
+                # seq busts the browser cache so each poll fetches the new frame
+                "image_url": f"/api/camera/frame.jpg?seq={frame['seq']}",
+            }
+        )
+
+    # No recent live frame — fall back to the last diagnosed camera capture.
     capture = store.get_latest_camera_capture()
     if capture is None:
         return jsonify(None)
     capture["image_url"] = image_url(capture.pop("image_filename"))
+    capture["live"] = False
     return jsonify(capture)
+
+
+@app.post("/api/camera/frame")
+def camera_frame_upload():
+    """Live-preview push from the ESP32-CAM: raw image/jpeg body (or a
+    multipart "image" field). No inference, nothing logged to history."""
+    if not device_authorized(request):
+        return jsonify({"error": "unauthorized"}), 401
+
+    if "image" in request.files:
+        image_bytes = request.files["image"].read()
+    else:
+        image_bytes = request.get_data(cache=False)
+
+    if not image_bytes or image_bytes[:2] != b"\xff\xd8":
+        return jsonify({"error": "Body must be a JPEG image"}), 400
+    if len(image_bytes) > MAX_LIVE_FRAME_BYTES:
+        return jsonify({"error": "Frame too large"}), 413
+
+    set_live_frame(image_bytes)
+    store.device_heartbeat(request.headers.get("X-Device-Id", "esp32-cam"), "camera")
+    return jsonify({"ok": True})
+
+
+@app.get("/api/camera/frame.jpg")
+def camera_frame():
+    frame = get_live_frame()
+    if frame is None:
+        return jsonify({"error": "No live frame"}), 404
+    return Response(
+        frame["bytes"],
+        mimetype="image/jpeg",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @app.get("/api/uploads/<path:filename>")
@@ -136,6 +213,7 @@ def api_predict():
         is_camera=is_camera,
     )
     if is_camera:
+        set_live_frame(image_bytes)
         store.device_heartbeat(request.headers.get("X-Device-Id", "esp32-cam"), "camera")
 
     result["auto_dispense_queued"] = auto_dispense

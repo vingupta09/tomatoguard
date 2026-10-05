@@ -117,9 +117,14 @@ then confirm `DEVICE_KEY` matches the backend's `DEVICE_API_KEY` exactly
 Every 20 seconds, captures a JPEG and `POST`s it to `{SERVER_URL}/api/predict`
 with headers identifying it as the camera device. If the backend classifies
 the leaf as medium/high severity, it automatically queues pump 1's
-dispense command — no button press needed. The dashboard's live camera preview
-updates from these uploaded frames (it is a periodic still-image preview, not
-a continuous video stream).
+dispense command — no button press needed.
+
+Between diagnoses it also pushes a raw JPEG to `{SERVER_URL}/api/camera/frame`
+about once a second (`PREVIEW_INTERVAL_MS`). The server keeps only the newest
+frame in memory (no inference, no history entry), and the dashboard's live
+camera preview polls it — roughly 1 fps, not full video. If no frame arrives
+for 15 seconds, the preview falls back to the last diagnosed capture. Set
+`PREVIEW_INTERVAL_MS = 0` to turn the live preview off.
 
 ### Wiring / hardware
 
