@@ -39,8 +39,8 @@ export default function PumpTest() {
   }
 
   return (
-    <div className="p-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-1">
+    <div className="w-full max-w-6xl p-4 sm:p-6 lg:p-8">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-2xl font-display font-semibold">Pump test</h2>
         <span className="text-xs font-mono text-ink-faint">{new Date().toLocaleDateString()}</span>
       </div>
@@ -49,7 +49,7 @@ export default function PumpTest() {
         function without waiting for a disease detection.
       </p>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 sm:gap-4">
         <StatusCard
           label="Pump controller"
           value={status.pump_online ? 'Online' : 'Offline'}
@@ -60,9 +60,9 @@ export default function PumpTest() {
         <StatusCard label="Pump 2 last run" value={status.pump2_last_dispensed || '—'} tone="neutral" hint="Water" />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
         {PUMPS.map((p) => (
-          <div key={p.id} className="bg-surface border border-border rounded-2xl p-6 shadow-panel">
+          <div key={p.id} className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-panel">
             <h3 className="text-xs uppercase tracking-wide text-ink-faint mb-1">{p.label}</h3>
             <p className="text-sm text-ink-dim mb-6">{p.hint}</p>
             <button

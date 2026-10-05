@@ -70,12 +70,12 @@ export default function Home() {
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-border">
         <div className="absolute inset-0 field-grid bg-grid-fade pointer-events-none" />
-        <div className="relative max-w-6xl mx-auto px-6 pt-20 pb-20 grid lg:grid-cols-[1.1fr_0.9fr] gap-14 items-center">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-12 sm:pt-20 pb-12 sm:pb-20 grid lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-14 items-center">
           <div>
             <p className="text-xs font-mono tracking-wide text-moss-bright mb-5">
               FOR TOMATO GROWERS &amp; FIELD RESEARCHERS
             </p>
-            <h1 className="font-display font-semibold text-[2.75rem] sm:text-5xl leading-[1.08] max-w-xl">
+            <h1 className="font-display font-semibold text-4xl sm:text-5xl leading-[1.08] max-w-xl">
               A camera in the field that knows a sick leaf before you do
             </h1>
             <p className="mt-6 text-ink-dim max-w-md text-base leading-relaxed">
@@ -97,7 +97,7 @@ export default function Home() {
                 Open dashboard
               </Link>
             </div>
-            <div className="mt-12 grid grid-cols-3 gap-6 max-w-md">
+            <div className="mt-10 sm:mt-12 grid grid-cols-3 gap-3 sm:gap-6 max-w-md">
               <div>
                 <p className="font-mono text-2xl font-medium">3</p>
                 <p className="text-xs text-ink-faint mt-1">Classes detected</p>
@@ -148,7 +148,7 @@ export default function Home() {
       </section>
 
       {/* How it works */}
-      <section className="max-w-6xl mx-auto px-6 py-20">
+      <section className="max-w-6xl mx-auto px-4 py-12 sm:px-6 sm:py-20">
         <div className="max-w-xl mb-10">
           <h2 className="text-2xl font-display font-semibold mb-3">How it works</h2>
           <p className="text-ink-dim text-sm">
@@ -168,14 +168,14 @@ export default function Home() {
 
       {/* Live classifier */}
       <section id="classify" className="bg-surface/40 border-y border-border">
-        <div className="max-w-6xl mx-auto px-6 py-20">
+        <div className="max-w-6xl mx-auto px-4 py-12 sm:px-6 sm:py-20">
           <div className="max-w-xl mb-10">
             <h2 className="text-2xl font-display font-semibold mb-3">Try the classifier</h2>
             <p className="text-ink-dim text-sm">Upload a tomato leaf photo and see the system's full diagnosis.</p>
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6">
-            <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel">
+            <div className="min-w-0 bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-panel">
               <label className="block text-sm text-ink-dim mb-3">Leaf image</label>
               <label
                 htmlFor="leaf-upload"
@@ -200,7 +200,7 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel">
+            <div className="min-w-0 bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-panel">
               <h3 className="text-xs uppercase tracking-wide text-ink-faint mb-4">Diagnosis</h3>
               {!result && (
                 <div className="h-full flex items-center justify-center text-center py-12">
@@ -216,7 +216,7 @@ export default function Home() {
       </section>
 
       {/* Disease reference preview */}
-      <section className="max-w-6xl mx-auto px-6 py-20">
+      <section className="max-w-6xl mx-auto px-4 py-12 sm:px-6 sm:py-20">
         <div className="max-w-xl mb-10">
           <h2 className="text-2xl font-display font-semibold mb-3">What the model looks for</h2>
           <p className="text-ink-dim text-sm">Three classes, each with a distinct visual signature.</p>
@@ -233,7 +233,7 @@ export default function Home() {
       </section>
 
       <footer className="border-t border-border">
-        <div className="max-w-6xl mx-auto px-6 py-8 text-sm text-ink-faint flex flex-wrap justify-between gap-2">
+        <div className="max-w-6xl mx-auto px-4 py-8 text-sm text-ink-faint flex flex-wrap justify-between gap-2 sm:px-6">
           <span>Plant Disease Detection and Automated Pesticide Dispensing System</span>
           <span>B.Tech final year project</span>
         </div>

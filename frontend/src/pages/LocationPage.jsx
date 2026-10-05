@@ -45,7 +45,7 @@ export default function LocationPage() {
   }, [])
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="w-full max-w-6xl p-4 sm:p-6 lg:p-8">
       <h2 className="text-2xl font-display font-semibold mb-1">Field location</h2>
       <p className="text-ink-dim text-sm mb-7">Where CAM-01 is currently positioned, and local conditions.</p>
 
@@ -57,8 +57,7 @@ export default function LocationPage() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div
-          className="lg:col-span-2 bg-surface border border-border rounded-2xl overflow-hidden shadow-panel"
-          style={{ height: 380 }}
+          className="lg:col-span-2 bg-surface border border-border rounded-2xl overflow-hidden shadow-panel h-[300px] sm:h-[380px]"
         >
           {coords ? (
             <MapContainer center={[coords.lat, coords.lng]} zoom={15} style={{ height: '100%' }}>

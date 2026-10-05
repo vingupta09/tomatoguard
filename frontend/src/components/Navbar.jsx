@@ -42,8 +42,8 @@ export default function Navbar() {
   const navigate = useNavigate()
 
   return (
-    <aside className="w-64 shrink-0 bg-surface border-r border-border min-h-screen flex flex-col">
-      <div className="px-6 py-6 border-b border-border">
+    <aside className="flex w-full shrink-0 flex-col border-b border-border bg-surface lg:min-h-screen lg:w-64 lg:border-b-0 lg:border-r">
+      <div className="border-b border-border px-4 py-3 sm:px-6 lg:px-6 lg:py-6">
         <Link to="/" className="flex items-center gap-2.5">
           <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
             <circle cx="16" cy="18" r="10" fill="#C15A34" />
@@ -56,13 +56,13 @@ export default function Navbar() {
           </div>
         </Link>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className="flex gap-1 overflow-x-auto px-2 py-2 lg:flex-1 lg:flex-col lg:space-y-0.5 lg:overflow-visible lg:px-3 lg:py-4">
         {links.map((l) => (
           <NavLink
             key={l.to}
             to={l.to}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm border-l-2 transition-colors ${
+              `flex shrink-0 items-center gap-2 rounded-lg border-b-2 px-3 py-2.5 text-xs transition-colors sm:text-sm lg:gap-3 lg:border-b-0 lg:border-l-2 ${
                 isActive
                   ? 'bg-surface-raised text-ink border-moss'
                   : 'text-ink-dim border-transparent hover:bg-surface-raised/60 hover:text-ink'
@@ -74,9 +74,9 @@ export default function Navbar() {
           </NavLink>
         ))}
       </nav>
-      <div className="px-4 py-4 border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2.5 lg:flex-col lg:items-stretch lg:px-4 lg:py-4">
         <ThemeToggle />
-        <div className="flex items-center gap-3 rounded-lg bg-surface-raised px-3 py-2.5 mb-2">
+        <div className="flex min-w-0 flex-1 items-center gap-3 rounded-lg bg-surface-raised px-3 py-2.5 lg:mb-2 lg:flex-initial">
           <span className="h-7 w-7 rounded-full bg-moss/20 text-moss-bright text-xs font-medium flex items-center justify-center shrink-0">
             {(user || '?').slice(0, 1).toUpperCase()}
           </span>
@@ -90,7 +90,7 @@ export default function Navbar() {
             logout()
             navigate('/login')
           }}
-          className="w-full text-left text-xs text-ink-dim hover:text-rust-bright rounded-lg px-3 py-2 transition-colors"
+          className="shrink-0 rounded-lg px-3 py-2 text-left text-xs text-ink-dim transition-colors hover:text-rust-bright lg:w-full"
         >
           Log out
         </button>

@@ -12,9 +12,9 @@ export default function About() {
   return (
     <div>
       <TopNav />
-      <div className="max-w-5xl mx-auto px-6 py-16">
+      <div className="max-w-5xl mx-auto px-4 py-10 sm:px-6 sm:py-16">
         <p className="text-xs font-mono tracking-wide text-moss-bright mb-4">ABOUT THE SYSTEM</p>
-        <h2 className="text-3xl font-display font-semibold mb-4 max-w-2xl">
+        <h2 className="text-3xl sm:text-4xl font-display font-semibold mb-4 max-w-2xl">
           A closed loop between camera, model, and pump
         </h2>
         <p className="text-ink-dim max-w-2xl mb-14 leading-relaxed">
@@ -24,7 +24,7 @@ export default function About() {
         </p>
 
         <h3 className="text-lg font-display font-semibold mb-5">Disease reference</h3>
-        <div className="grid sm:grid-cols-3 gap-4 mb-16">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-12 sm:mb-16">
           {Object.entries(DISEASE_INFO).map(([name, info]) => (
             <div key={name} className="bg-surface border border-border rounded-xl p-5">
               <p className="text-xs uppercase tracking-wide text-ink-faint mb-1">{info.category}</p>

@@ -24,9 +24,9 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-bg px-4 py-6 relative overflow-hidden">
       <div className="absolute inset-0 field-grid bg-grid-fade pointer-events-none" />
-      <div className="relative w-full max-w-sm bg-surface border border-border rounded-2xl shadow-panel px-8 py-10">
+      <div className="relative w-full max-w-sm bg-surface border border-border rounded-2xl shadow-panel px-6 py-8 sm:px-8 sm:py-10">
         <Link to="/" className="flex items-center gap-2.5 mb-8">
           <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
             <circle cx="16" cy="18" r="10" fill="#C15A34" />

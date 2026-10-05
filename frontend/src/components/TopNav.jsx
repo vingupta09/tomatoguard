@@ -7,7 +7,7 @@ export default function TopNav() {
 
   return (
     <header className="sticky top-0 z-20 bg-bg/85 backdrop-blur border-b border-border">
-      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-y-3">
         <Link to="/" className="flex items-center gap-2.5">
           <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
             <circle cx="16" cy="18" r="10" fill="#C15A34" />
@@ -16,7 +16,7 @@ export default function TopNav() {
           </svg>
           <span className="font-display font-semibold tracking-tight">TomatoGuard</span>
         </Link>
-        <nav className="hidden sm:flex items-center gap-7 text-sm text-ink-dim">
+        <nav className="order-3 flex w-full items-center justify-center gap-7 text-sm text-ink-dim sm:order-none sm:w-auto">
           <NavLink to="/" end className={({ isActive }) => (isActive ? 'text-ink' : 'hover:text-ink transition-colors')}>
             Home
           </NavLink>

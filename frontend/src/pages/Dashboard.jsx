@@ -82,14 +82,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-8 max-w-6xl">
-      <div className="flex items-center justify-between mb-1">
+    <div className="w-full max-w-6xl p-4 sm:p-6 lg:p-8">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-2xl font-display font-semibold">Dashboard</h2>
         <span className="text-xs font-mono text-ink-faint">{formatIndiaDateTime(new Date().toISOString())}</span>
       </div>
       <p className="text-ink-dim mb-7 text-sm">Capture or upload a leaf image to check for disease.</p>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 sm:gap-4">
         <StatusCard
           label="ESP32-CAM"
           value={status.esp32_online ? 'Online' : 'Offline'}
@@ -105,8 +105,8 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel h-fit">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2 lg:gap-6">
+        <div className="min-w-0 bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-panel h-fit">
           <label className="block text-sm text-ink-dim mb-3">Leaf image</label>
           <label
             htmlFor="dash-upload"
@@ -132,7 +132,7 @@ export default function Dashboard() {
           {error && <p className="text-sm text-amber-bright mt-3">{error}</p>}
         </div>
 
-        <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel">
+        <div className="min-w-0 bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-panel">
           <h3 className="text-xs uppercase tracking-wide text-ink-faint mb-4">Diagnosis</h3>
           {!result && (
             <div className="h-full flex items-center justify-center text-center py-16">
@@ -154,11 +154,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel mt-6">
+      <div className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-panel mt-6">
         <h3 className="text-xs uppercase tracking-wide text-ink-faint mb-4">Latest camera capture</h3>
         {!latestCapture && <p className="text-sm text-ink-faint">No captures logged yet.</p>}
         {latestCapture && (
-          <div className="flex gap-5 items-center">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
             <div className="w-32 h-32 rounded-xl overflow-hidden bg-bg-soft border border-border shrink-0">
               {latestCapture.image_url ? (
                 <img
