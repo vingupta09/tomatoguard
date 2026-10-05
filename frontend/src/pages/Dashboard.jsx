@@ -3,6 +3,7 @@ import client, { mediaUrl } from '../api/client.js'
 import StatusCard from '../components/StatusCard.jsx'
 import DiagnosisPanel from '../components/DiagnosisPanel.jsx'
 import { getDemoPrediction, DEMO_STATUS, DEMO_HISTORY } from '../data/demo.js'
+import { formatIndiaDateTime } from '../utils/dateTime.js'
 
 const CLASS_DOT = { healthy: 'bg-moss', non_fungal: 'bg-amber', fungal: 'bg-crimson' }
 
@@ -84,7 +85,7 @@ export default function Dashboard() {
     <div className="p-8 max-w-6xl">
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-2xl font-display font-semibold">Dashboard</h2>
-        <span className="text-xs font-mono text-ink-faint">{new Date().toLocaleDateString()}</span>
+        <span className="text-xs font-mono text-ink-faint">{formatIndiaDateTime(new Date().toISOString())}</span>
       </div>
       <p className="text-ink-dim mb-7 text-sm">Capture or upload a leaf image to check for disease.</p>
 
@@ -172,7 +173,7 @@ export default function Dashboard() {
               )}
             </div>
             <div>
-              <p className="text-xs font-mono text-ink-faint mb-1">{latestCapture.timestamp}</p>
+              <p className="text-xs font-mono text-ink-faint mb-1">{formatIndiaDateTime(latestCapture.timestamp)}</p>
               <p className="capitalize font-medium flex items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${CLASS_DOT[latestCapture.class] || 'bg-ink/30'}`} />
                 {latestCapture.class.replace('_', '-')}

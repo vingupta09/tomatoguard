@@ -87,6 +87,26 @@ def log_detection(
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (_now(), class_name, confidence, severity, int(dispensed), image_filename, int(is_camera)),
         )
+        excess = conn.execute(
+            """SELECT id, image_filename FROM detections
+               WHERE class = ?
+               ORDER BY id DESC LIMIT -1 OFFSET 5""",
+            (class_name,),
+        ).fetchall()
+        if excess:
+            conn.executemany("DELETE FROM detections WHERE id = ?", [(row["id"],) for row in excess])
+    return [row["image_filename"] for row in excess if row["image_filename"]]
+
+
+def clear_history():
+    with _lock, _conn() as conn:
+        filenames = [
+            row["image_filename"]
+            for row in conn.execute("SELECT image_filename FROM detections").fetchall()
+            if row["image_filename"]
+        ]
+        conn.execute("DELETE FROM detections")
+    return filenames
 
 
 def get_history(limit: int = 100):

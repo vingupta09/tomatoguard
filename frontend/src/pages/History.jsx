@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import client, { mediaUrl } from '../api/client.js'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Cell } from 'recharts'
 import { DEMO_HISTORY } from '../data/demo.js'
+import { formatIndiaDateTime } from '../utils/dateTime.js'
 
 const HISTORY_CATEGORIES = [
   { key: 'healthy', label: 'Healthy' },
@@ -22,21 +23,6 @@ function historyCategory(className) {
   return normalized
 }
 
-function formatHistoryTimestamp(timestamp) {
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return timestamp
-
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(date)
-}
-
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
@@ -50,6 +36,8 @@ function ChartTooltip({ active, payload, label }) {
 export default function History() {
   const [records, setRecords] = useState([])
   const [selectedImage, setSelectedImage] = useState(null)
+  const [clearing, setClearing] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     client
@@ -67,6 +55,22 @@ export default function History() {
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [selectedImage])
 
+  const clearHistory = async () => {
+    if (!window.confirm('Clear all detection history and delete its saved images? This cannot be undone.')) return
+
+    setClearing(true)
+    setError('')
+    try {
+      await client.delete('/api/history')
+      setRecords([])
+      setSelectedImage(null)
+    } catch {
+      setError('Could not clear history. Please check the backend connection and try again.')
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const categoryRecords = HISTORY_CATEGORIES.map((category) => ({
     ...category,
     records: records.filter((record) => historyCategory(record.class) === category.key),
@@ -79,8 +83,21 @@ export default function History() {
 
   return (
     <div className="p-8 max-w-6xl">
-      <h2 className="text-2xl font-display font-semibold mb-1">Detection history</h2>
-      <p className="text-ink-dim text-sm mb-7">Every scan logged by the field camera, most recent first.</p>
+      <div className="flex items-start justify-between gap-4 mb-7">
+        <div>
+          <h2 className="text-2xl font-display font-semibold mb-1">Detection history</h2>
+          <p className="text-ink-dim text-sm">Newest five images per class are kept, most recent first.</p>
+        </div>
+        <button
+          type="button"
+          onClick={clearHistory}
+          disabled={clearing || records.length === 0}
+          className="shrink-0 rounded-lg border border-crimson/40 px-4 py-2 text-sm text-crimson-bright transition-colors hover:bg-crimson/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {clearing ? 'Clearing…' : 'Clear history'}
+        </button>
+      </div>
+      {error && <p role="alert" className="text-sm text-crimson-bright mb-5">{error}</p>}
 
       <div className="bg-surface border border-border rounded-2xl p-6 shadow-panel mb-6" style={{ height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -163,7 +180,7 @@ export default function History() {
                         )}
                       </td>
                       <td className="px-5 py-3 font-mono text-xs text-ink-dim">
-                        {formatHistoryTimestamp(record.timestamp)}
+                        {formatIndiaDateTime(record.timestamp)}
                       </td>
                       <td className="px-5 py-3 font-mono text-xs">{Math.round(record.confidence * 100)}%</td>
                       <td className="px-5 py-3">

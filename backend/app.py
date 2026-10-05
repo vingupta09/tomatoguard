@@ -72,6 +72,16 @@ def image_url(filename):
     return f"/api/uploads/{filename}" if filename else None
 
 
+def remove_history_images(filenames):
+    for filename in filenames:
+        if os.path.basename(filename) != filename:
+            raise ValueError(f"Invalid history image filename: {filename!r}")
+        try:
+            os.remove(os.path.join(UPLOAD_DIR, filename))
+        except FileNotFoundError:
+            pass
+
+
 def device_authorized(req) -> bool:
     if not DEVICE_API_KEY:
         return True  # no key configured — dev mode
@@ -120,6 +130,13 @@ def history():
     for r in records:
         r["image_url"] = image_url(r.pop("image_filename"))
     return jsonify(records)
+
+
+@app.delete("/api/history")
+def clear_history():
+    filenames = store.clear_history()
+    remove_history_images(filenames)
+    return jsonify({"cleared": True, "deleted_images": len(filenames)})
 
 
 @app.get("/api/camera/preview")
@@ -204,7 +221,7 @@ def api_predict():
     if auto_dispense:
         store.queue_dispense()
 
-    store.log_detection(
+    removed_filenames = store.log_detection(
         result["class"],
         result["confidence"],
         result["severity"],
@@ -212,6 +229,7 @@ def api_predict():
         image_filename=saved_filename,
         is_camera=is_camera,
     )
+    remove_history_images(removed_filenames)
     if is_camera:
         set_live_frame(image_bytes)
         store.device_heartbeat(request.headers.get("X-Device-Id", "esp32-cam"), "camera")
