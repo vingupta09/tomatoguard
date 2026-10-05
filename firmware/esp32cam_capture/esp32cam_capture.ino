@@ -1,273 +1,373 @@
 /*
-  ESP32-CAM leaf capture -> upload
-  Board: AI-Thinker ESP32-CAM (the common $6-8 module with OV2640 camera)
+  ESP32 Pump Controller - ACTIVE-LOW RELAYS
 
-  What this does, on a loop:
-    1. Captures a JPEG frame from the camera.
-    2. POSTs it as multipart/form-data to POST {SERVER_URL}/api/predict
-       with field name "image", plus headers identifying this device as
-       the camera so the server is allowed to auto-queue a pump command.
-    3. Prints the JSON diagnosis to Serial for debugging.
-    4. Sends a lightweight device heartbeat every 10 seconds so the
-       dashboard can report the camera's online status independently of
-       image upload or model-inference timing.
+  Relay logic:
+    LOW  = Relay ON  = Pump ON
+    HIGH = Relay OFF = Pump OFF
 
-  Libraries needed (Arduino IDE > Library Manager):
-    - ArduinoJson (by Benoit Blanchon)
-  Board support needed (Boards Manager):
-    - "esp32" by Espressif Systems — select "AI Thinker ESP32-CAM" as the board.
+  Controls two independently-controlled pumps/sprayers.
 
-  Wiring note: the AI-Thinker board has no onboard USB-serial chip. Use an
-  FTDI/USB-serial adapter to flash it (GPIO0 to GND while resetting to enter
-  flash mode), then remove that GPIO0-GND link and reset again to run.
+  Flow:
+    1. GET /api/pump/command every POLL_INTERVAL_MS
+    2. If pump1/pump2 says "dispense":
+       - Relay goes LOW (ON)
+       - Pump runs for DISPENSE_DURATION_MS
+       - Relay goes HIGH (OFF)
+    3. POST /api/pump/ack after dispensing
+
+  IMPORTANT:
+    Do NOT drive a pump directly from an ESP32 GPIO.
+    Use a properly-rated relay module and appropriate external
+    power supply for the pump.
 */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include "esp_camera.h"
 
-// ---------- Configuration ----------
-const char* WIFI_SSID      = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD  = "YOUR_WIFI_PASSWORD";
+// ---------- WiFi Configuration ----------
+const char* WIFI_SSID     = "Excitel_ 2.4";
+const char* WIFI_PASSWORD = "@Udit1588";
 
-// Your deployed backend, e.g. "https://tomatoguard-api.onrender.com"
-// No trailing slash.
-const char* SERVER_URL     = "https://YOUR-BACKEND.onrender.com";
+// ---------- Server Configuration ----------
+const char* SERVER_URL =
+    "https://tomatoguard-api.onrender.com";
 
-// Must match DEVICE_API_KEY set in the backend's environment variables.
-const char* DEVICE_KEY     = "change-me-to-a-long-random-string";
-const char* DEVICE_ID      = "esp32-cam-north-row";
+// Must match DEVICE_API_KEY in your backend
+const char* DEVICE_KEY =
+    "tg-secret-8f92x71k";
 
-// How often to capture + upload a frame.
-const unsigned long CAPTURE_INTERVAL_MS = 20000;
-const unsigned long HEARTBEAT_INTERVAL_MS = 10000;
+const char* DEVICE_ID =
+    "esp32-pump-north-row";
 
-// Live-preview uploads are disabled because the dashboard no longer displays them.
-const unsigned long PREVIEW_INTERVAL_MS = 0;
+// ---------- Relay Pins ----------
+const int RELAY_PIN_1 = 26;   // Pump 1 - pesticide/sprayer
+const int RELAY_PIN_2 = 27;   // Pump 2 - water pump
 
-// ---------- AI-Thinker ESP32-CAM pin map ----------
-#define PWDN_GPIO_NUM     32
-#define RESET_GPIO_NUM    -1
-#define XCLK_GPIO_NUM      0
-#define SIOD_GPIO_NUM     26
-#define SIOC_GPIO_NUM     27
-#define Y9_GPIO_NUM       35
-#define Y8_GPIO_NUM       34
-#define Y7_GPIO_NUM       39
-#define Y6_GPIO_NUM       36
-#define Y5_GPIO_NUM       21
-#define Y4_GPIO_NUM       19
-#define Y3_GPIO_NUM       18
-#define Y2_GPIO_NUM        5
-#define VSYNC_GPIO_NUM    25
-#define HREF_GPIO_NUM     23
-#define PCLK_GPIO_NUM     22
+// ---------- Timing ----------
+const unsigned long POLL_INTERVAL_MS = 2000;
+const unsigned long DISPENSE_DURATION_MS = 4000;
 
-unsigned long lastCapture = 0;
-unsigned long lastPreview = 0;
-unsigned long lastHeartbeat = 0;
+unsigned long lastPoll = 0;
+
+
+// ============================================================
+// RELAY CONTROL
+// ============================================================
+
+// Active-LOW relay:
+// LOW  = ON
+// HIGH = OFF
+
+void relayOn(int relayPin) {
+  digitalWrite(relayPin, LOW);
+}
+
+void relayOff(int relayPin) {
+  digitalWrite(relayPin, HIGH);
+}
+
+
+// ============================================================
+// WIFI CONNECTION
+// ============================================================
 
 void connectWiFi() {
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
   Serial.print("Connecting to WiFi");
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(400);
     Serial.print(".");
   }
+
   Serial.println();
-  Serial.print("WiFi connected, IP: ");
+  Serial.println("WiFi connected!");
+
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
-bool initCamera() {
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer   = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
 
-  // Leaf photos don't need to be huge — SVGA keeps upload time and
-  // server-side memory use low. Bump to UXGA if you want more detail.
-  if (psramFound()) {
-    config.frame_size = FRAMESIZE_SVGA;   // 800x600
-    config.jpeg_quality = 10;             // lower number = higher quality
-    config.fb_count = 2;
-    config.fb_location = CAMERA_FB_IN_PSRAM;
-    // Always hand back the newest frame. With the default
-    // (CAMERA_GRAB_WHEN_EMPTY) and 2 buffers, every fb_get would return a
-    // frame that's one interval old — the preview would lag behind.
-    config.grab_mode = CAMERA_GRAB_LATEST;
-  } else {
-    config.frame_size = FRAMESIZE_VGA;    // 640x480
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-  }
+// ============================================================
+// DISPENSE
+// ============================================================
 
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x\n", err);
-    return false;
-  }
-  return true;
-}
+void dispense(int pumpNum, int relayPin) {
 
-// Uploads one JPEG frame as multipart/form-data and returns true on a
-// successful (2xx) response. Prints the diagnosis JSON to Serial.
-bool captureAndUpload() {
-  camera_fb_t* fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Camera capture failed");
-    return false;
-  }
+  Serial.printf("Dispensing pump %d...\n", pumpNum);
+
+  // ACTIVE-LOW RELAY:
+  // LOW turns relay ON
+  relayOn(relayPin);
+
+  Serial.printf(
+    "Pump %d ON for %lu ms\n",
+    pumpNum,
+    DISPENSE_DURATION_MS
+  );
+
+  delay(DISPENSE_DURATION_MS);
+
+  // ACTIVE-LOW RELAY:
+  // HIGH turns relay OFF
+  relayOff(relayPin);
+
+  Serial.printf("Pump %d OFF\n", pumpNum);
+
+  Serial.println("Done. Sending ack...");
+
+  // ----------------------------------------------------------
+  // Send ACK to server
+  // ----------------------------------------------------------
 
   HTTPClient http;
-  String url = String(SERVER_URL) + "/api/predict";
-  http.begin(url);
 
-  String boundary = "TomatoGuardBoundary7331";
-  http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
-  http.addHeader("X-Device-Role", "camera");
-  http.addHeader("X-Device-Id", DEVICE_ID);
-  http.addHeader("X-Device-Key", DEVICE_KEY);
+  String ackURL =
+      String(SERVER_URL) + "/api/pump/ack";
 
-  String head = "--" + boundary + "\r\n"
-                "Content-Disposition: form-data; name=\"image\"; filename=\"leaf.jpg\"\r\n"
-                "Content-Type: image/jpeg\r\n\r\n";
-  String tail = "\r\n--" + boundary + "--\r\n";
+  http.begin(ackURL);
 
-  size_t totalLen = head.length() + fb->len + tail.length();
-  uint8_t* body = (uint8_t*)malloc(totalLen);
-  if (!body) {
-    Serial.println("Not enough memory to build request body");
-    esp_camera_fb_return(fb);
-    http.end();
-    return false;
-  }
+  http.addHeader(
+      "X-Device-Key",
+      DEVICE_KEY
+  );
 
-  size_t idx = 0;
-  memcpy(body + idx, head.c_str(), head.length()); idx += head.length();
-  memcpy(body + idx, fb->buf, fb->len);             idx += fb->len;
-  memcpy(body + idx, tail.c_str(), tail.length());  idx += tail.length();
+  http.addHeader(
+      "Content-Type",
+      "application/json"
+  );
 
-  int status = http.POST(body, totalLen);
-  free(body);
-  esp_camera_fb_return(fb);
+  String payload =
+      String("{\"pump\":") +
+      pumpNum +
+      "}";
+
+  int status = http.POST(payload);
+
+  Serial.printf(
+      "ACK responded: %d\n",
+      status
+  );
 
   if (status > 0) {
     String response = http.getString();
-    Serial.printf("Server responded %d: %s\n", status, response.c_str());
 
-    StaticJsonDocument<1024> doc;
-    if (deserializeJson(doc, response) == DeserializationError::Ok) {
-      const char* disease = doc["disease"] | "unknown";
-      const char* severity = doc["severity"] | "unknown";
-      bool queued = doc["auto_dispense_queued"] | false;
-      Serial.printf("Diagnosis: %s (severity: %s) — pump queued: %s\n",
-                     disease, severity, queued ? "yes" : "no");
-    }
-  } else {
-    Serial.printf("HTTP POST failed: %s\n", http.errorToString(status).c_str());
+    Serial.print("ACK response: ");
+    Serial.println(response);
   }
 
   http.end();
-  return status >= 200 && status < 300;
 }
 
-// Pushes one JPEG frame as a raw image/jpeg body for the dashboard's live
-// preview. Fire-and-forget: failures are logged and the next tick retries.
-bool uploadPreviewFrame() {
-  camera_fb_t* fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Preview capture failed");
-    return false;
-  }
+
+// ============================================================
+// POLL SERVER FOR COMMANDS
+// ============================================================
+
+void pollForCommand() {
 
   HTTPClient http;
-  String url = String(SERVER_URL) + "/api/camera/frame";
+
+  String url =
+      String(SERVER_URL) +
+      "/api/pump/command";
+
   http.begin(url);
-  http.setTimeout(5000);
-  http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("X-Device-Role", "camera");
-  http.addHeader("X-Device-Id", DEVICE_ID);
-  http.addHeader("X-Device-Key", DEVICE_KEY);
 
-  int status = http.POST(fb->buf, fb->len);
-  esp_camera_fb_return(fb);
+  http.addHeader(
+      "X-Device-Key",
+      DEVICE_KEY
+  );
 
-  if (status <= 0) {
-    Serial.printf("Preview POST failed: %s\n", http.errorToString(status).c_str());
-  } else if (status < 200 || status >= 300) {
-    Serial.printf("Preview rejected (%d): %s\n", status, http.getString().c_str());
+  http.addHeader(
+      "X-Device-Id",
+      DEVICE_ID
+  );
+
+  Serial.println("Checking server for pump commands...");
+
+  int status = http.GET();
+
+  if (status > 0) {
+
+    Serial.printf(
+        "Server responded: %d\n",
+        status
+    );
+
+    String response =
+        http.getString();
+
+    Serial.print("Server response: ");
+    Serial.println(response);
+
+    StaticJsonDocument<256> doc;
+
+    DeserializationError error =
+        deserializeJson(doc, response);
+
+    if (error == DeserializationError::Ok) {
+
+      const char* pump1 =
+          doc["pump1"] | "none";
+
+      const char* pump2 =
+          doc["pump2"] | "none";
+
+      Serial.print("Pump 1 command: ");
+      Serial.println(pump1);
+
+      Serial.print("Pump 2 command: ");
+      Serial.println(pump2);
+
+
+      // ------------------------------------------------------
+      // PUMP 1
+      // ------------------------------------------------------
+
+      if (strcmp(pump1, "dispense") == 0) {
+
+        dispense(
+            1,
+            RELAY_PIN_1
+        );
+      }
+
+
+      // ------------------------------------------------------
+      // PUMP 2
+      // ------------------------------------------------------
+
+      if (strcmp(pump2, "dispense") == 0) {
+
+        dispense(
+            2,
+            RELAY_PIN_2
+        );
+      }
+
+    } else {
+
+      Serial.print(
+          "JSON parsing failed: "
+      );
+
+      Serial.println(
+          error.c_str()
+      );
+    }
+
+  } else {
+
+    Serial.printf(
+        "Poll failed: %s\n",
+        http.errorToString(status).c_str()
+    );
   }
 
   http.end();
-  return status >= 200 && status < 300;
 }
 
-void sendHeartbeat() {
-  HTTPClient http;
-  http.begin(String(SERVER_URL) + "/api/device/heartbeat");
-  http.setTimeout(5000);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-Device-Key", DEVICE_KEY);
 
-  String body = String("{\"device_id\":\"") + DEVICE_ID + "\",\"role\":\"camera\"}";
-  int status = http.POST(body);
-  if (status < 200 || status >= 300) {
-    Serial.printf("Heartbeat failed (%d): %s\n",
-                  status,
-                  status > 0 ? http.getString().c_str() : http.errorToString(status).c_str());
-  }
-  http.end();
-}
+// ============================================================
+// SETUP
+// ============================================================
 
 void setup() {
-  Serial.begin(115200);
-  delay(200);
 
-  if (!initCamera()) {
-    Serial.println("Halting — camera init failed. Check wiring/board select.");
-    while (true) delay(1000);
-  }
+  Serial.begin(115200);
+
+  Serial.println();
+  Serial.println("==============================");
+  Serial.println("ESP32 Pump Controller");
+  Serial.println("ACTIVE-LOW RELAY MODE");
+  Serial.println("==============================");
+
+
+  // ----------------------------------------------------------
+  // Configure relay pins
+  // ----------------------------------------------------------
+
+  pinMode(
+      RELAY_PIN_1,
+      OUTPUT
+  );
+
+  pinMode(
+      RELAY_PIN_2,
+      OUTPUT
+  );
+
+
+  // ----------------------------------------------------------
+  // IMPORTANT:
+  // Active-LOW relay:
+  // HIGH = OFF
+  //
+  // Set HIGH immediately so pumps are OFF.
+  // ----------------------------------------------------------
+
+  digitalWrite(
+      RELAY_PIN_1,
+      HIGH
+  );
+
+  digitalWrite(
+      RELAY_PIN_2,
+      HIGH
+  );
+
+  Serial.println("Pump 1 relay: OFF");
+  Serial.println("Pump 2 relay: OFF");
+
+
+  // ----------------------------------------------------------
+  // Connect WiFi
+  // ----------------------------------------------------------
+
   connectWiFi();
 }
 
+
+// ============================================================
+// LOOP
+// ============================================================
+
 void loop() {
+
+  // ----------------------------------------------------------
+  // Reconnect WiFi if connection is lost
+  // ----------------------------------------------------------
+
   if (WiFi.status() != WL_CONNECTED) {
+
+    Serial.println(
+        "WiFi disconnected. Reconnecting..."
+    );
+
+    // Make sure pumps are OFF during reconnection
+    relayOff(RELAY_PIN_1);
+    relayOff(RELAY_PIN_2);
+
     connectWiFi();
   }
 
-  if (millis() - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-    lastHeartbeat = millis();
-    sendHeartbeat();
-  }
 
-  if (millis() - lastCapture >= CAPTURE_INTERVAL_MS) {
-    lastCapture = millis();
-    captureAndUpload();
-    lastPreview = millis(); // the diagnosis upload also refreshes the preview
-  }
+  // ----------------------------------------------------------
+  // Poll server
+  // ----------------------------------------------------------
 
-  if (PREVIEW_INTERVAL_MS > 0 && millis() - lastPreview >= PREVIEW_INTERVAL_MS) {
-    lastPreview = millis();
-    uploadPreviewFrame();
+  if (
+      millis() - lastPoll >=
+      POLL_INTERVAL_MS
+  ) {
+
+    lastPoll = millis();
+
+    pollForCommand();
   }
 }
