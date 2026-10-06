@@ -1,373 +1,483 @@
-/*
-  ESP32 Pump Controller - ACTIVE-LOW RELAYS
-
-  Relay logic:
-    LOW  = Relay ON  = Pump ON
-    HIGH = Relay OFF = Pump OFF
-
-  Controls two independently-controlled pumps/sprayers.
-
-  Flow:
-    1. GET /api/pump/command every POLL_INTERVAL_MS
-    2. If pump1/pump2 says "dispense":
-       - Relay goes LOW (ON)
-       - Pump runs for DISPENSE_DURATION_MS
-       - Relay goes HIGH (OFF)
-    3. POST /api/pump/ack after dispensing
-
-  IMPORTANT:
-    Do NOT drive a pump directly from an ESP32 GPIO.
-    Use a properly-rated relay module and appropriate external
-    power supply for the pump.
-*/
-
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
+#include "esp_camera.h"
+#include "img_converters.h"
 
-// ---------- WiFi Configuration ----------
-const char* WIFI_SSID     = "Excitel_ 2.4";
-const char* WIFI_PASSWORD = "@Udit1588";
+// =====================================================
+// WiFi
+// =====================================================
+const char* ssid = "Excitel_ 2.4";
+const char* password = "YOUR_WIFI_PASSWORD";
 
-// ---------- Server Configuration ----------
-const char* SERVER_URL =
-    "https://tomatoguard-api.onrender.com";
+// =====================================================
+// TomatoGuard API
+// =====================================================
+const char* serverURL =
+    "https://tomatoguard-api.onrender.com/api/predict";
 
-// Must match DEVICE_API_KEY in your backend
-const char* DEVICE_KEY =
-    "tg-secret-8f92x71k";
+// IMPORTANT:
+// Put the SAME device ID and device key that your backend expects.
+const char* deviceId = "YOUR_DEVICE_ID";
+const char* deviceKey = "YOUR_DEVICE_KEY";
 
-const char* DEVICE_ID =
-    "esp32-pump-north-row";
+// =====================================================
+// AI THINKER ESP32-CAM PIN CONFIGURATION
+// =====================================================
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM      26
+#define SIOC_GPIO_NUM      27
 
-// ---------- Relay Pins ----------
-const int RELAY_PIN_1 = 26;   // Pump 1 - pesticide/sprayer
-const int RELAY_PIN_2 = 27;   // Pump 2 - water pump
+#define Y9_GPIO_NUM        35
+#define Y8_GPIO_NUM        34
+#define Y7_GPIO_NUM        39
+#define Y6_GPIO_NUM        36
+#define Y5_GPIO_NUM        21
+#define Y4_GPIO_NUM        19
+#define Y3_GPIO_NUM        18
+#define Y2_GPIO_NUM        5
 
-// ---------- Timing ----------
-const unsigned long POLL_INTERVAL_MS = 2000;
-const unsigned long DISPENSE_DURATION_MS = 4000;
-
-unsigned long lastPoll = 0;
-
-
-// ============================================================
-// RELAY CONTROL
-// ============================================================
-
-// Active-LOW relay:
-// LOW  = ON
-// HIGH = OFF
-
-void relayOn(int relayPin) {
-  digitalWrite(relayPin, LOW);
-}
-
-void relayOff(int relayPin) {
-  digitalWrite(relayPin, HIGH);
-}
+#define VSYNC_GPIO_NUM     25
+#define HREF_GPIO_NUM      23
+#define PCLK_GPIO_NUM      22
 
 
-// ============================================================
-// WIFI CONNECTION
-// ============================================================
+// =====================================================
+// CONNECT WIFI
+// =====================================================
+bool connectWiFi() {
 
-void connectWiFi() {
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  Serial.print("Connecting to WiFi");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(400);
-    Serial.print(".");
+  if (WiFi.status() == WL_CONNECTED) {
+    return true;
   }
 
   Serial.println();
-  Serial.println("WiFi connected!");
+  Serial.println("Connecting to WiFi...");
 
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  WiFi.mode(WIFI_STA);
+
+  // Normal WiFi transmit power
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+
+  WiFi.begin(ssid, password);
+
+  int attempts = 0;
+
+  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+
+    delay(500);
+
+    Serial.print(".");
+
+    attempts++;
+  }
+
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+
+    Serial.println("WiFi connected!");
+
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    Serial.print("RSSI: ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+
+    return true;
+  }
+
+  Serial.println("WiFi connection FAILED!");
+
+  return false;
 }
 
 
-// ============================================================
-// DISPENSE
-// ============================================================
+// =====================================================
+// CAMERA INITIALIZATION
+// =====================================================
+bool initCamera() {
 
-void dispense(int pumpNum, int relayPin) {
+  camera_config_t config;
 
-  Serial.printf("Dispensing pump %d...\n", pumpNum);
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
 
-  // ACTIVE-LOW RELAY:
-  // LOW turns relay ON
-  relayOn(relayPin);
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
 
-  Serial.printf(
-    "Pump %d ON for %lu ms\n",
-    pumpNum,
-    DISPENSE_DURATION_MS
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+
+  config.pin_sscb_sda = SIOD_GPIO_NUM;
+  config.pin_sscb_scl = SIOC_GPIO_NUM;
+
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+
+  config.xclk_freq_hz = 20000000;
+
+  // IMPORTANT:
+  // OV3660 works with RGB565 in our setup.
+  config.pixel_format = PIXFORMAT_RGB565;
+
+  // 320 x 240
+  config.frame_size = FRAMESIZE_QVGA;
+
+  config.jpeg_quality = 12;
+
+  // Keep one framebuffer for stability.
+  config.fb_count = 1;
+
+  Serial.println();
+  Serial.println("Initializing camera...");
+
+  esp_err_t err = esp_camera_init(&config);
+
+  if (err != ESP_OK) {
+
+    Serial.print("Camera initialization FAILED. Error: 0x");
+    Serial.println(err, HEX);
+
+    return false;
+  }
+
+  Serial.println("Camera initialized successfully!");
+
+  sensor_t* sensor = esp_camera_sensor_get();
+
+  if (sensor != NULL) {
+
+    Serial.print("Sensor PID: 0x");
+    Serial.println(sensor->id.PID, HEX);
+  }
+
+  return true;
+}
+
+
+// =====================================================
+// CAPTURE + CONVERT TO JPEG + UPLOAD
+// =====================================================
+void uploadImage() {
+
+  // ---------------------------------------------------
+  // Check WiFi
+  // ---------------------------------------------------
+
+  if (!connectWiFi()) {
+
+    Serial.println("Upload skipped because WiFi is unavailable.");
+
+    return;
+  }
+
+
+  // ---------------------------------------------------
+  // Capture RGB565 image
+  // ---------------------------------------------------
+
+  Serial.println();
+  Serial.println("======================================");
+  Serial.println("Capturing image...");
+  Serial.println("======================================");
+
+  camera_fb_t* fb = esp_camera_fb_get();
+
+  if (fb == NULL) {
+
+    Serial.println("ERROR: Camera capture failed!");
+
+    return;
+  }
+
+  Serial.print("RGB565 image: ");
+  Serial.print(fb->width);
+  Serial.print(" x ");
+  Serial.print(fb->height);
+  Serial.print(" | ");
+  Serial.print(fb->len);
+  Serial.println(" bytes");
+
+
+  // ---------------------------------------------------
+  // Convert RGB565 → JPEG
+  // ---------------------------------------------------
+
+  uint8_t* jpgBuf = NULL;
+
+  size_t jpgLen = 0;
+
+  bool converted = frame2jpg(
+    fb,
+    80,
+    &jpgBuf,
+    &jpgLen
   );
 
-  delay(DISPENSE_DURATION_MS);
 
-  // ACTIVE-LOW RELAY:
-  // HIGH turns relay OFF
-  relayOff(relayPin);
+  // Camera framebuffer is no longer needed.
+  esp_camera_fb_return(fb);
 
-  Serial.printf("Pump %d OFF\n", pumpNum);
+  if (!converted || jpgBuf == NULL) {
 
-  Serial.println("Done. Sending ack...");
+    Serial.println("ERROR: JPEG conversion failed!");
 
-  // ----------------------------------------------------------
-  // Send ACK to server
-  // ----------------------------------------------------------
+    return;
+  }
+
+  Serial.println("JPEG conversion SUCCESS!");
+
+  Serial.print("JPEG size: ");
+  Serial.print(jpgLen);
+  Serial.println(" bytes");
+
+
+  // ---------------------------------------------------
+  // Create multipart/form-data
+  // ---------------------------------------------------
+
+  String boundary = "----ESP32CameraBoundary";
+
+  String head =
+      "--" + boundary + "\r\n"
+      "Content-Disposition: form-data; name=\"image\"; filename=\"capture.jpg\"\r\n"
+      "Content-Type: image/jpeg\r\n"
+      "\r\n";
+
+  String tail =
+      "\r\n--" + boundary + "--\r\n";
+
+
+  size_t totalLength =
+      head.length() +
+      jpgLen +
+      tail.length();
+
+
+  Serial.print("Multipart upload size: ");
+  Serial.print(totalLength);
+  Serial.println(" bytes");
+
+
+  // ---------------------------------------------------
+  // Allocate upload buffer
+  // ---------------------------------------------------
+
+  uint8_t* body = (uint8_t*)malloc(totalLength);
+
+  if (body == NULL) {
+
+    Serial.println("ERROR: Not enough memory for upload buffer!");
+
+    free(jpgBuf);
+
+    return;
+  }
+
+
+  // ---------------------------------------------------
+  // Copy multipart header
+  // ---------------------------------------------------
+
+  size_t offset = 0;
+
+  memcpy(
+    body + offset,
+    head.c_str(),
+    head.length()
+  );
+
+  offset += head.length();
+
+
+  // ---------------------------------------------------
+  // Copy JPEG
+  // ---------------------------------------------------
+
+  memcpy(
+    body + offset,
+    jpgBuf,
+    jpgLen
+  );
+
+  offset += jpgLen;
+
+
+  // ---------------------------------------------------
+  // Copy multipart ending
+  // ---------------------------------------------------
+
+  memcpy(
+    body + offset,
+    tail.c_str(),
+    tail.length()
+  );
+
+
+  // ---------------------------------------------------
+  // HTTP POST
+  // ---------------------------------------------------
 
   HTTPClient http;
 
-  String ackURL =
-      String(SERVER_URL) + "/api/pump/ack";
+  Serial.println();
+  Serial.println("Connecting to TomatoGuard API...");
 
-  http.begin(ackURL);
+  http.begin(serverURL);
+
+  http.setTimeout(30000);
+
+
+  // Content-Type
+  String contentType =
+      "multipart/form-data; boundary=" + boundary;
 
   http.addHeader(
-      "X-Device-Key",
-      DEVICE_KEY
+    "Content-Type",
+    contentType
+  );
+
+
+  // Device authentication headers
+  http.addHeader(
+    "X-Device-Role",
+    "camera"
   );
 
   http.addHeader(
-      "Content-Type",
-      "application/json"
+    "X-Device-Id",
+    deviceId
   );
 
-  String payload =
-      String("{\"pump\":") +
-      pumpNum +
-      "}";
-
-  int status = http.POST(payload);
-
-  Serial.printf(
-      "ACK responded: %d\n",
-      status
+  http.addHeader(
+    "X-Device-Key",
+    deviceKey
   );
 
-  if (status > 0) {
+
+  Serial.println("Uploading JPEG...");
+
+  int httpCode = http.POST(
+    body,
+    totalLength
+  );
+
+
+  // ---------------------------------------------------
+  // Server response
+  // ---------------------------------------------------
+
+  Serial.print("HTTP response code: ");
+  Serial.println(httpCode);
+
+
+  if (httpCode > 0) {
+
     String response = http.getString();
 
-    Serial.print("ACK response: ");
-    Serial.println(response);
-  }
+    Serial.println();
+    Serial.println("========== SERVER RESPONSE ==========");
 
-  http.end();
-}
-
-
-// ============================================================
-// POLL SERVER FOR COMMANDS
-// ============================================================
-
-void pollForCommand() {
-
-  HTTPClient http;
-
-  String url =
-      String(SERVER_URL) +
-      "/api/pump/command";
-
-  http.begin(url);
-
-  http.addHeader(
-      "X-Device-Key",
-      DEVICE_KEY
-  );
-
-  http.addHeader(
-      "X-Device-Id",
-      DEVICE_ID
-  );
-
-  Serial.println("Checking server for pump commands...");
-
-  int status = http.GET();
-
-  if (status > 0) {
-
-    Serial.printf(
-        "Server responded: %d\n",
-        status
-    );
-
-    String response =
-        http.getString();
-
-    Serial.print("Server response: ");
     Serial.println(response);
 
-    StaticJsonDocument<256> doc;
+    Serial.println("=====================================");
 
-    DeserializationError error =
-        deserializeJson(doc, response);
+  } 
+  else {
 
-    if (error == DeserializationError::Ok) {
+    Serial.print("HTTP POST failed: ");
 
-      const char* pump1 =
-          doc["pump1"] | "none";
-
-      const char* pump2 =
-          doc["pump2"] | "none";
-
-      Serial.print("Pump 1 command: ");
-      Serial.println(pump1);
-
-      Serial.print("Pump 2 command: ");
-      Serial.println(pump2);
-
-
-      // ------------------------------------------------------
-      // PUMP 1
-      // ------------------------------------------------------
-
-      if (strcmp(pump1, "dispense") == 0) {
-
-        dispense(
-            1,
-            RELAY_PIN_1
-        );
-      }
-
-
-      // ------------------------------------------------------
-      // PUMP 2
-      // ------------------------------------------------------
-
-      if (strcmp(pump2, "dispense") == 0) {
-
-        dispense(
-            2,
-            RELAY_PIN_2
-        );
-      }
-
-    } else {
-
-      Serial.print(
-          "JSON parsing failed: "
-      );
-
-      Serial.println(
-          error.c_str()
-      );
-    }
-
-  } else {
-
-    Serial.printf(
-        "Poll failed: %s\n",
-        http.errorToString(status).c_str()
+    Serial.println(
+      http.errorToString(httpCode)
     );
   }
 
+
+  // ---------------------------------------------------
+  // Cleanup
+  // ---------------------------------------------------
+
   http.end();
+
+  free(body);
+
+  free(jpgBuf);
+
+  body = NULL;
+
+  jpgBuf = NULL;
+
+  Serial.println();
+  Serial.println("Upload complete.");
 }
 
 
-// ============================================================
+// =====================================================
 // SETUP
-// ============================================================
-
+// =====================================================
 void setup() {
 
   Serial.begin(115200);
 
+  delay(2000);
+
   Serial.println();
-  Serial.println("==============================");
-  Serial.println("ESP32 Pump Controller");
-  Serial.println("ACTIVE-LOW RELAY MODE");
-  Serial.println("==============================");
+  Serial.println();
+  Serial.println("======================================");
+  Serial.println("      TOMATOGUARD ESP32-CAM");
+  Serial.println("======================================");
 
 
-  // ----------------------------------------------------------
-  // Configure relay pins
-  // ----------------------------------------------------------
+  // ---------------------------------------------------
+  // WiFi
+  // ---------------------------------------------------
 
-  pinMode(
-      RELAY_PIN_1,
-      OUTPUT
-  );
+  if (!connectWiFi()) {
 
-  pinMode(
-      RELAY_PIN_2,
-      OUTPUT
-  );
+    Serial.println("WiFi failed.");
+
+    return;
+  }
 
 
-  // ----------------------------------------------------------
-  // IMPORTANT:
-  // Active-LOW relay:
-  // HIGH = OFF
-  //
-  // Set HIGH immediately so pumps are OFF.
-  // ----------------------------------------------------------
+  // ---------------------------------------------------
+  // Camera
+  // ---------------------------------------------------
 
-  digitalWrite(
-      RELAY_PIN_1,
-      HIGH
-  );
+  if (!initCamera()) {
 
-  digitalWrite(
-      RELAY_PIN_2,
-      HIGH
-  );
+    Serial.println("Camera failed.");
 
-  Serial.println("Pump 1 relay: OFF");
-  Serial.println("Pump 2 relay: OFF");
+    return;
+  }
 
 
-  // ----------------------------------------------------------
-  // Connect WiFi
-  // ----------------------------------------------------------
-
-  connectWiFi();
+  Serial.println();
+  Serial.println("SYSTEM READY!");
+  Serial.println();
 }
 
 
-// ============================================================
+// =====================================================
 // LOOP
-// ============================================================
-
+// =====================================================
 void loop() {
 
-  // ----------------------------------------------------------
-  // Reconnect WiFi if connection is lost
-  // ----------------------------------------------------------
+  uploadImage();
 
-  if (WiFi.status() != WL_CONNECTED) {
+  Serial.println();
+  Serial.println("Waiting 20 seconds...");
 
-    Serial.println(
-        "WiFi disconnected. Reconnecting..."
-    );
-
-    // Make sure pumps are OFF during reconnection
-    relayOff(RELAY_PIN_1);
-    relayOff(RELAY_PIN_2);
-
-    connectWiFi();
-  }
-
-
-  // ----------------------------------------------------------
-  // Poll server
-  // ----------------------------------------------------------
-
-  if (
-      millis() - lastPoll >=
-      POLL_INTERVAL_MS
-  ) {
-
-    lastPoll = millis();
-
-    pollForCommand();
-  }
+  delay(20000);
 }
