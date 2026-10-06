@@ -43,6 +43,28 @@ DEVICE_API_KEY = os.environ.get(
 )
 
 
+# --------------------------------------------------------
+# Should the camera's photo upload ALSO need the secret key?
+#
+#   false (default): a request that says "X-Device-Role: camera"
+#                    is accepted as the camera. The pump board
+#                    and /api/pump/* still need the key.
+#   true           : the camera must also send a matching
+#                    X-Device-Key, otherwise it is ignored.
+#
+# Set REQUIRE_CAMERA_KEY=true on Render once the camera's key
+# is confirmed correct and /api/dispense is protected.
+# --------------------------------------------------------
+
+REQUIRE_CAMERA_KEY = (
+    os.environ.get(
+        "REQUIRE_CAMERA_KEY",
+        "false"
+    ).strip().lower()
+    in ("1", "true", "yes")
+)
+
+
 def device_authorized(req):
     """
     Check the device API key.
@@ -238,7 +260,8 @@ def status():
         # ESP32-CAM status
         "esp32_online":
             store.is_role_online(
-                "camera"
+                "camera",
+                within_seconds=90
             ),
 
         # ESP32 pump-controller status
@@ -449,13 +472,26 @@ def api_predict():
     # 5. Identify whether this is an authorized camera
     # --------------------------------------------------------
 
+    role_header = request.headers.get(
+        "X-Device-Role"
+    )
+
+    sent_camera_role = (
+        (role_header or "").strip().lower()
+        == "camera"
+    )
+
+    key_ok = device_authorized(
+        request
+    )
+
     is_camera = (
-        request.headers.get(
-            "X-Device-Role"
-        ) == "camera"
+        sent_camera_role
         and
-        device_authorized(
-            request
+        (
+            key_ok
+            or
+            not REQUIRE_CAMERA_KEY
         )
     )
 
@@ -524,6 +560,62 @@ def api_predict():
 
 
     # --------------------------------------------------------
+    # Why was the pump NOT queued?  (returned to the camera and
+    # printed in the Render logs, so a silent failure is visible)
+    # --------------------------------------------------------
+
+    pump_skipped_reason = None
+
+    if not auto_dispense:
+
+        if not sent_camera_role:
+
+            pump_skipped_reason = (
+                "request had no 'X-Device-Role: camera' header "
+                "(treated as a manual dashboard upload)"
+            )
+
+        elif not is_camera:
+
+            pump_skipped_reason = (
+                "camera X-Device-Key does not match "
+                "DEVICE_API_KEY and REQUIRE_CAMERA_KEY is on"
+            )
+
+        else:
+
+            pump_skipped_reason = (
+                "leaf is healthy, no pump needed"
+            )
+
+
+    print(
+        "[predict]"
+        f" role={role_header!r}"
+        f" key_sent={bool(request.headers.get('X-Device-Key'))}"
+        f" server_key_set={bool(DEVICE_API_KEY)}"
+        f" key_ok={key_ok}"
+        f" require_key={REQUIRE_CAMERA_KEY}"
+        f" is_camera={is_camera}"
+        f" class={result['class']}"
+        f" confidence={result['confidence']}"
+        f" pump={pump_number}"
+        f" skipped={pump_skipped_reason!r}",
+        flush=True
+    )
+
+    if sent_camera_role and not key_ok:
+
+        print(
+            "[predict] WARNING: the camera sent a key that does not "
+            "match DEVICE_API_KEY. It was accepted because "
+            "REQUIRE_CAMERA_KEY is off. Put the pump's DEVICE_KEY "
+            "into the camera sketch to fix this.",
+            flush=True
+        )
+
+
+    # --------------------------------------------------------
     # 6. Save detection history
     # --------------------------------------------------------
 
@@ -576,6 +668,11 @@ def api_predict():
 
     result["pump"] = (
         pump_number
+    )
+
+
+    result["pump_skipped_reason"] = (
+        pump_skipped_reason
     )
 
 
