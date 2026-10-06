@@ -11,11 +11,13 @@ export default function Dashboard() {
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [result, setResult] = useState(null)
-  const [status, setStatus] = useState({ esp32_online: false, last_dispensed: '—' })
+  const [status, setStatus] = useState({ esp32_online: false, last_dispensed: '—', auto_mode: false })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [dispensed, setDispensed] = useState(false)
   const [latestCapture, setLatestCapture] = useState(null)
+  const [autoBusy, setAutoBusy] = useState(false)
+  const [autoError, setAutoError] = useState('')
 
   const loadLatestCapture = () => {
     client
@@ -81,6 +83,20 @@ export default function Dashboard() {
     }
   }
 
+  // Switch automatic spraying ON / OFF (the camera can only start a pump while this is ON)
+  const toggleAutoMode = async () => {
+    setAutoBusy(true)
+    setAutoError('')
+    try {
+      const { data } = await client.post('/api/auto-mode', { enabled: !status.auto_mode })
+      setStatus((s) => ({ ...s, auto_mode: data.enabled }))
+    } catch {
+      setAutoError('Could not reach the server')
+    } finally {
+      setAutoBusy(false)
+    }
+  }
+
   return (
     <div className="w-full max-w-6xl p-4 sm:p-6 lg:p-8">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -89,7 +105,7 @@ export default function Dashboard() {
       </div>
       <p className="text-ink-dim mb-7 text-sm">Capture or upload a leaf image to check for disease.</p>
 
-      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 sm:gap-4">
+      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 sm:gap-4">
         <StatusCard
           label="ESP32-CAM"
           value={status.esp32_online ? 'Online' : 'Offline'}
@@ -103,6 +119,39 @@ export default function Dashboard() {
           tone="warning"
           hint="Across all rows"
         />
+        <div className="bg-surface border border-border rounded-xl px-5 py-4 shadow-panel">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-wide text-ink-faint">Auto spray</p>
+            <span
+              className={`h-2 w-2 rounded-full ${
+                status.auto_mode ? 'bg-moss shadow-[0_0_0_3px_rgba(95,168,119,0.18)]' : 'bg-ink/30'
+              }`}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-2xl font-display font-semibold leading-none">{status.auto_mode ? 'ON' : 'OFF'}</p>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={!!status.auto_mode}
+              aria-label="Automatic spraying"
+              onClick={toggleAutoMode}
+              disabled={autoBusy}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                status.auto_mode ? 'bg-moss' : 'bg-ink/20'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                  status.auto_mode ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          <p className="text-xs text-ink-faint mt-2 font-mono">
+            {autoError || (status.auto_mode ? 'Camera can start the pump' : 'Camera will not spray')}
+          </p>
+        </div>
       </div>
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-2 lg:gap-6">

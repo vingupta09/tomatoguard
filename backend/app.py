@@ -1,6 +1,11 @@
 import datetime
+import io
 import os
+import threading
 import uuid
+
+import numpy as np
+from PIL import Image
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -63,6 +68,134 @@ REQUIRE_CAMERA_KEY = (
     ).strip().lower()
     in ("1", "true", "yes")
 )
+
+
+# ============================================================
+# AUTO-SPRAY SAFETY SETTINGS
+# ============================================================
+#
+# The model has no "not a leaf" class, so it will label ANY object
+# (a hand, a desk, a wall) as healthy / fungal / non-fungal.
+# To stop the pump spraying at random objects, an automatic spray
+# needs ALL of these to be true:
+#
+#   1. AUTO MODE is switched ON (button on the dashboard)
+#   2. the photo looks like a leaf (enough green/yellow-green pixels)
+#   3. the model is confident enough
+#
+# Change them on Render > Environment (no code change needed):
+#
+#   AUTO_MODE_DEFAULT = true / false   (state after a restart, default false)
+#   LEAF_MIN_GREEN    = 0.15           (0 turns the leaf check off)
+#   MIN_CONFIDENCE    = 0.80           (0 turns the confidence check off)
+#
+# ============================================================
+
+def _env_flag(name, default):
+
+    return (
+        os.environ.get(
+            name,
+            default
+        ).strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+
+
+def _env_float(name, default):
+
+    try:
+
+        return float(
+            os.environ.get(
+                name,
+                default
+            )
+        )
+
+    except ValueError:
+
+        return float(default)
+
+
+AUTO_MODE_DEFAULT = _env_flag(
+    "AUTO_MODE_DEFAULT",
+    "false"
+)
+
+LEAF_MIN_GREEN = _env_float(
+    "LEAF_MIN_GREEN",
+    "0.15"
+)
+
+MIN_CONFIDENCE = _env_float(
+    "MIN_CONFIDENCE",
+    "0.80"
+)
+
+
+# Auto mode lives in memory. With one gunicorn worker that is enough.
+# After a redeploy or restart it goes back to AUTO_MODE_DEFAULT.
+_auto_mode = {
+    "enabled": AUTO_MODE_DEFAULT
+}
+
+_auto_mode_lock = threading.Lock()
+
+
+def auto_mode_enabled():
+
+    with _auto_mode_lock:
+
+        return _auto_mode["enabled"]
+
+
+def set_auto_mode(enabled):
+
+    with _auto_mode_lock:
+
+        _auto_mode["enabled"] = bool(
+            enabled
+        )
+
+        return _auto_mode["enabled"]
+
+
+def leaf_green_ratio(image_bytes):
+    """
+    Share of pixels (0.0 - 1.0) that are leaf-coloured:
+    green to yellow-green, reasonably saturated.
+
+    Hands, walls, desks, screens and most everyday objects score
+    close to 0. A leaf, even with brown spots, scores well above it.
+    """
+
+    img = Image.open(
+        io.BytesIO(image_bytes)
+    ).convert("RGB")
+
+    img.thumbnail((160, 160))
+
+    hsv = np.asarray(
+        img.convert("HSV"),
+        dtype=np.float32
+    ) / 255.0
+
+    hue = hsv[..., 0]
+    sat = hsv[..., 1]
+    val = hsv[..., 2]
+
+    # hue 0.10 - 0.45  = about 36 - 162 degrees (yellow-green .. green)
+    mask = (
+        (hue >= 0.10)
+        & (hue <= 0.45)
+        & (sat >= 0.20)
+        & (val >= 0.15)
+    )
+
+    return float(
+        mask.mean()
+    )
 
 
 def device_authorized(req):
@@ -289,6 +422,10 @@ def status():
         # Number of detections today
         "detections_today":
             store.get_today_count(),
+
+        # Automatic spraying switched on/off from the dashboard
+        "auto_mode":
+            auto_mode_enabled(),
     })
 
 
@@ -509,84 +646,83 @@ def api_predict():
     # Healthy:
     #     No pump
     #
+    # The pump is only queued when Auto Mode is ON, the photo
+    # looks like a leaf, and the model is confident enough.
+    #
     # ========================================================
 
     auto_dispense = False
 
     pump_number = None
 
-
-    if is_camera:
-
-        # ----------------------------------------------------
-        # FUNGAL -> PUMP 1
-        # ----------------------------------------------------
-
-        if result["class"] == "fungal":
-
-            pump_number = 1
-
-            store.queue_dispense(
-                1
-            )
-
-            auto_dispense = True
-
-
-        # ----------------------------------------------------
-        # NON-FUNGAL -> PUMP 2
-        # ----------------------------------------------------
-
-        elif result["class"] == "non_fungal":
-
-            pump_number = 2
-
-            store.queue_dispense(
-                2
-            )
-
-            auto_dispense = True
-
-
-        # ----------------------------------------------------
-        # HEALTHY -> NO PUMP
-        # ----------------------------------------------------
-
-        else:
-
-            auto_dispense = False
-
-            pump_number = None
-
-
-    # --------------------------------------------------------
-    # Why was the pump NOT queued?  (returned to the camera and
-    # printed in the Render logs, so a silent failure is visible)
-    # --------------------------------------------------------
-
     pump_skipped_reason = None
 
-    if not auto_dispense:
+    green_ratio = leaf_green_ratio(
+        image_bytes
+    )
 
-        if not sent_camera_role:
+    auto_on = auto_mode_enabled()
 
-            pump_skipped_reason = (
-                "request had no 'X-Device-Role: camera' header "
-                "(treated as a manual dashboard upload)"
-            )
 
-        elif not is_camera:
+    # Which pump would this result use?
+    wanted_pump = {
+        "fungal": 1,
+        "non_fungal": 2,
+    }.get(
+        result["class"]
+    )
 
-            pump_skipped_reason = (
-                "camera X-Device-Key does not match "
-                "DEVICE_API_KEY and REQUIRE_CAMERA_KEY is on"
-            )
 
-        else:
+    if not sent_camera_role:
 
-            pump_skipped_reason = (
-                "leaf is healthy, no pump needed"
-            )
+        pump_skipped_reason = (
+            "request had no 'X-Device-Role: camera' header "
+            "(treated as a manual dashboard upload)"
+        )
+
+    elif not is_camera:
+
+        pump_skipped_reason = (
+            "camera X-Device-Key does not match "
+            "DEVICE_API_KEY and REQUIRE_CAMERA_KEY is on"
+        )
+
+    elif wanted_pump is None:
+
+        pump_skipped_reason = (
+            "leaf is healthy, no pump needed"
+        )
+
+    elif not auto_on:
+
+        pump_skipped_reason = (
+            "Auto Mode is OFF (switch it on in the dashboard)"
+        )
+
+    elif green_ratio < LEAF_MIN_GREEN:
+
+        pump_skipped_reason = (
+            f"image does not look like a leaf "
+            f"(leaf colour {green_ratio:.0%}, "
+            f"needs {LEAF_MIN_GREEN:.0%})"
+        )
+
+    elif result["confidence"] < MIN_CONFIDENCE:
+
+        pump_skipped_reason = (
+            f"model confidence {result['confidence']:.0%} "
+            f"is below {MIN_CONFIDENCE:.0%}"
+        )
+
+    else:
+
+        pump_number = wanted_pump
+
+        store.queue_dispense(
+            pump_number
+        )
+
+        auto_dispense = True
 
 
     print(
@@ -597,6 +733,8 @@ def api_predict():
         f" key_ok={key_ok}"
         f" require_key={REQUIRE_CAMERA_KEY}"
         f" is_camera={is_camera}"
+        f" auto_mode={auto_on}"
+        f" leaf_colour={green_ratio:.2f}"
         f" class={result['class']}"
         f" confidence={result['confidence']}"
         f" pump={pump_number}"
@@ -676,6 +814,17 @@ def api_predict():
     )
 
 
+    result["auto_mode"] = (
+        auto_on
+    )
+
+
+    result["leaf_colour_ratio"] = round(
+        green_ratio,
+        3
+    )
+
+
     result["image_url"] = (
         image_url(
             saved_filename
@@ -686,6 +835,68 @@ def api_predict():
     return jsonify(
         result
     )
+
+
+# ============================================================
+# AUTO MODE (automatic spraying ON / OFF)
+# ============================================================
+
+@app.get("/api/auto-mode")
+def get_auto_mode():
+
+    return jsonify({
+        "enabled": auto_mode_enabled()
+    })
+
+
+@app.post("/api/auto-mode")
+def update_auto_mode():
+    """
+    Switch automatic spraying on or off.
+
+    JSON:
+        {"enabled": true}
+
+    or:
+
+        {"enabled": false}
+    """
+
+    data = (
+        request.get_json(
+            silent=True
+        )
+        or {}
+    )
+
+
+    enabled = data.get(
+        "enabled"
+    )
+
+
+    if not isinstance(enabled, bool):
+
+        return jsonify({
+            "error":
+                "send JSON like {\"enabled\": true}"
+        }), 400
+
+
+    set_auto_mode(
+        enabled
+    )
+
+
+    print(
+        f"[auto-mode] switched {'ON' if enabled else 'OFF'}",
+        flush=True
+    )
+
+
+    return jsonify({
+        "enabled": auto_mode_enabled()
+    })
 
 
 # ============================================================
