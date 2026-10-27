@@ -320,6 +320,33 @@ def remove_history_images(filenames):
 # TIME / STATUS HELPERS
 # ============================================================
 
+def seconds_since(iso_ts):
+    """
+    Whole seconds since an ISO timestamp (or None if there is none).
+    Used to tell the pump board how old the latest camera result is.
+    """
+
+    if not iso_ts:
+        return None
+
+    dt = datetime.datetime.fromisoformat(
+        iso_ts.replace(
+            "Z",
+            ""
+        )
+    )
+
+    return max(
+        0,
+        int(
+            (
+                datetime.datetime.utcnow()
+                - dt
+            ).total_seconds()
+        )
+    )
+
+
 def humanize(iso_ts):
     """
     Convert an ISO timestamp into a simple human-readable age.
@@ -1027,6 +1054,39 @@ def pump_command():
     )
 
 
+    # --------------------------------------------------------
+    # Extra information for the 16x2 LCD on the pump board.
+    #
+    # Only the latest result that came from the CAMERA is used
+    # (manual dashboard uploads are ignored).
+    # --------------------------------------------------------
+
+    capture = (
+        store.get_latest_camera_capture()
+    )
+
+    detection = None
+
+    if capture is not None:
+
+        detection = {
+
+            "class":
+                capture["class"],
+
+            "confidence":
+                capture["confidence"],
+
+            "sprayed":
+                capture["dispensed"],
+
+            "age_s":
+                seconds_since(
+                    capture["timestamp"]
+                ),
+        }
+
+
     return jsonify({
 
         "pump1":
@@ -1035,7 +1095,19 @@ def pump_command():
 
         "pump2":
             commands[2]
-            or "none"
+            or "none",
+
+        "auto_mode":
+            auto_mode_enabled(),
+
+        "camera_online":
+            store.is_role_online(
+                "camera",
+                within_seconds=90
+            ),
+
+        "detection":
+            detection
     })
 
 
